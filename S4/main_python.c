@@ -1585,7 +1585,7 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 		&discretization_resolution,
 		&bool_converter, &polarization_decomp,
 		&polarization_basis,
-		&bool_converter, &lanczos_smoothing,
+		&lanczos_converter, &lanczos_smoothing,
 		&bool_converter, &subpixel_smoothing,
 		&bool_converter, &conserve_memory
 	)){ return NULL; }
