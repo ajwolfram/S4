@@ -674,7 +674,7 @@ void SolveLayerEigensystem_real(
 	if(NULL == work_ || lwork < n2*n2+4*n2){
 		rcwa_free(work);
 	}
-	
+
 	// Re-make kp in complex arithmetic for future use
 	std::complex<double> *kp_use_actual = (NULL != kp ? kp : phi);
 	MakeKPMatrix(omega, n, kx, ky, Epsilon_inv, EPSILON2_TYPE_FULL, NULL, kp_use_actual, n2);
@@ -697,7 +697,7 @@ void SolveLayerEigensystem(
 	size_t lwork
 ){
 	const size_t n2 = 2*n;
-	
+
 #ifdef HAVE_LAPACK
 	bool isreal = (n > 10);
 	for(size_t j = 0; j < n && isreal; ++j){
@@ -1209,26 +1209,26 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 		// error: not enough workspace
 		return -15;
 	}
-	
+
 	// Set up temporaries
 	doublecomplex *t1 = work;
 	doublecomplex *t2 = t1 + n22;
 	doublecomplex *in1 = t2 + n22;
 	doublecomplex *in2 = in1 + n22;
-	
+
 	for(size_t ip = 0, iq = 1; iq < nlayers; ip=iq++){
 		// Set pointers to current row of matrices
 		doublecomplex *row = work+6*n22*iq;
-		
+
 		// Precondition for current loop iteration:
 		//   Qprev from previous iteration was formed correctly
-		
+
 		/*
 		// Assemble interface T-matrix
 		//   Assemble mode-to-field operator for p in row
 		if(0 == p){
 			// TODO: Generate mode-to-field operator for p
-			
+
 			// Factor and invert P
 			if(layer p is uniform){
 			}else if(layer p is z-uncoupled){
@@ -1254,7 +1254,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 		// In-place multiply q into p
 		LUMultRight(n4, n4, rownext, n4, ipiv);
 		*/
-		
+
 		// Make the interface matrices
 		if((ip == iq) || (q[ip] == q[iq] && ((NULL != kp[ip] && kp[ip] == kp[iq]) || Epsilon_inv[ip] == Epsilon_inv[iq]) && phi[ip] == phi[iq])){
 			// This is a trivial interface, set to identity
@@ -1328,7 +1328,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 				rcwa_free(Ml);
 			}
 			*/
-			
+
 			//// Begin copy from GetSMatrix
 			// Make Bl in t1
 			RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., t1,n2);
@@ -1435,7 +1435,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 		doublecomplex *Saa = Sba+n2;
 		doublecomplex *Sbb = row+n2*n4;
 		doublecomplex *Sab = Sbb+n2;
-		
+
 //printf("Preparing to exchange T to S\n"); fflush(stdout);
 
 		// Exchange to interface S-matrix, and also swap block rows
@@ -1452,7 +1452,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 //		PrintMatrix("Sab", n2, n2, Sab, n4);
 //		PrintMatrix("Sba", n2, n2, Sba, n4);
 //		PrintMatrix("Sbb", n2, n2, Sbb, n4);
-		
+
 		// Fold in propagation phases into the S-matrix
 		for(size_t j = 0; j < n2; ++j){
 			doublecomplex sp = std::exp(q[ip][j] * std::complex<double>(0,thickness[ip]));
@@ -1471,7 +1471,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 //printf("Applied phases\n"); fflush(stdout);
 	}
 	///////////// End copy from GetSMatrix
-	
+
 	// At this point, the workspace is divided into portions of length 6*n22
 	// for each layer. The interface scattering matrix between layers i and i+1
 	// begins at offset 6*n22*(i+1) in the workspace. The contents of each block
@@ -1487,15 +1487,15 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 	// The labeling of the columns is [ a0, b0, a1, b1, a2, b2, ... am, bm ]
 	// The first and last block columns correspond to boundary conditions and
 	// hence must be moved to the RHS. This produces in the end a square matrix.
-	
+
 	// Prepare the RHS
 	Mult(n4, n2, 1., &work[6*n22], n4, &ab[0], 0, t1);
 	Copy(n4, t1, 1, &ab[n2], 1);
 	Mult(n4, n2, 1., &work[6*n22*(nlayers-1)+n2*n4], n4, &ab[(nlayers-1)*n4+n2], 0, t1);
 	Copy(n4, t1, 1, &ab[(nlayers-1)*n4-n2], 1);
-	
+
 //	PrintMatrix("RHS0", n4,nlayers, ab, n4);
-	
+
 	// At this point, we can compute the quantities involved in the LDU decomposition
 	// of the system matrix. The initial diagonal pivot block is
 	//   [ I    0  | -Sbb  0 ]
@@ -1506,7 +1506,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 	// Notice that the upper and lower diagonal blocks come from different interfaces.
 	// The first LDU factorization step is trivial, and there are m-1 in total.
 	// Therefore, we need only iterate through the m-2 inner layers.
-	
+
 	for(size_t i = 1; i < nlayers; i++){
 //printf("i = %d\n", (int)i);
 		// Set pointers to current row of matrices
@@ -1515,14 +1515,14 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 		doublecomplex *Q = P + n22;
 		doublecomplex *Pprev = P - 6*n22;
 		doublecomplex *Qprev = Pprev + n22;
-			
+
 		const doublecomplex *Sbb = row-6*n22+n2*n4;
 		const doublecomplex *Sab = Sbb+n2;
-		
+
 		const doublecomplex *Sba = row;
 		const doublecomplex *Saa = Sba+n2;
 		size_t *ipivP = iwork + n2*i;
-		
+
 		// Perform LDU factorization step
 		if(1 == i){ // First step is trivial
 			SetMatrix(n2, n2, 1., 0., P, n2);
@@ -1540,12 +1540,12 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 			Mult(n2, 1., Saa, n4, t1, n2, 0., Q, n2);
 	//PrintMatrix("Saa", n2,n2, Saa, n4);
 	//PrintMatrix("Saa Qprev invPprev Sbb", n2,n2, Q, n2);
-			
+
 			Mult(n2, 1., Sba, n4, t1, n2, 0., P, n2);
 			for(size_t j = 0; j < n2; ++j){
 				P[j+j*n2] += 1.;
 			}
-			
+
 	//		PrintMatrix("Q", n2,n2, Q, n2);
 	//		PrintMatrix("P", n2,n2, P, n2);
 		}
@@ -1558,7 +1558,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 
 //printf("LDU step completed\n"); fflush(stdout);
 	}
-	
+
 	// Now use LDU factorization to solve
 	//   L D U x = b
 	//   x = U \ (D \ (L \ b))
@@ -1571,18 +1571,18 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 		doublecomplex *Q = P + n22;
 		doublecomplex *Pprev = P - 6*n22;
 		doublecomplex *Qprev = Pprev + n22;
-			
+
 		doublecomplex *Sbb = row+n2*n4;
 		doublecomplex *Sab = Sbb+n2;
-		
+
 		doublecomplex *Sba = row+6*n22;
 		doublecomplex *Saa = Sba+n2;
-		
+
 		doublecomplex *aj = &ab[j*n4];
 		doublecomplex *bjm1 = aj-n2;
 		doublecomplex *bjp1 = aj+n2;
 		size_t *ipivP = iwork + n2*j;
-		
+
 		// sub-diagonal block:
 		//   [     P               |  ]
 		//   [     Q            I  |  ]
@@ -1601,7 +1601,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 	}
 //printf("Forward pass completed\n"); fflush(stdout);
 //PrintMatrix("RHS1", n4,nlayers, ab, n4);
-	
+
 	// Diagonal pass
 	for(size_t j = 2; j < nlayers; ++j){
 		// Set pointers to current row of matrices
@@ -1624,7 +1624,7 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 	}
 //printf("Diagonal pass completed\n"); fflush(stdout);
 //PrintMatrix("RHS2", n4,nlayers, ab, n4);
-	
+
 	// Backward pass for U \ ...
 	for(size_t j = nlayers-2; j > 0; --j){
 		// Set pointers to current row of matrices
@@ -1633,18 +1633,18 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 		doublecomplex *Q = P + n22;
 		doublecomplex *Pprev = P - 6*n22;
 		doublecomplex *Qprev = Pprev + n22;
-			
+
 		doublecomplex *Sbb = row+n2*n4;
 		doublecomplex *Sab = Sbb+n2;
-		
+
 		doublecomplex *Sba = row+6*n22;
 		doublecomplex *Saa = Sba+n2;
-		
+
 		doublecomplex *aj = &ab[j*n4];
 		doublecomplex *bjm1 = aj-n2;
 		doublecomplex *bjp1 = aj+n2;
 		size_t *ipivP = iwork + n2*j;
-		
+
 		// super-diagonal block:
 		//   [ P   0 | -inv(P) Sbb            0 ]
 		//   [ Q   I | Q inv(P) Sbb - Sab     0 ]
@@ -1660,10 +1660,10 @@ printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
 		}
 		Mult(n2, n2,  1., Sab, n4, bjp1, 1., aj);
 	}
-	
+
 //printf("Backward pass completed\n"); fflush(stdout);
 //PrintMatrix("RHS3", n4,nlayers, ab, n4);
-	
+
 	if(NULL == work_){
 		rcwa_free(work);
 	}
