@@ -55,7 +55,7 @@ void fft_destroy(void);
 static int CheckPyNumber(PyObject *obj){
 	return PyFloat_Check(obj) || PyLong_Check(obj)
 #if PY_MAJOR_VERSION < 3
-		|| PyInt_Check(obj)
+		|| PyLong_Check(obj)
 #endif
 	;
 }
@@ -66,8 +66,8 @@ static double AsNumberPyNumber(PyObject *obj){
 		return (double)PyLong_AsLong(obj);
 	}
 #if PY_MAJOR_VERSION < 3
-	else if(PyInt_Check(obj)){
-		return (double)PyInt_AsLong(obj);
+	else if(PyLong_Check(obj)){
+		return (double)PyLong_AsLong(obj);
 	}
 #endif
 	return -1.0;
@@ -89,21 +89,21 @@ static void AsComplexPyComplex(PyObject *obj, double *re, double *im){
 }
 static PyObject *FromIntPyDefInt(int i){
 #if PY_MAJOR_VERSION < 3
-	return PyInt_FromLong(i);
+	return PyLong_FromLong(i);
 #else
 	return PyLong_FromLong(i);
 #endif
 }
-static int CheckPyInt(PyObject *obj){
+static int CheckPyLong(PyObject *obj){
 #if PY_MAJOR_VERSION < 3
-	return PyInt_Check(obj);
+	return PyLong_Check(obj);
 #else
 	return PyLong_Check(obj);
 #endif
 }
-static long GetPyInt(PyObject *obj){
+static long GetPyLong(PyObject *obj){
 #if PY_MAJOR_VERSION < 3
-	return PyInt_AsLong(obj);
+	return PyLong_AsLong(obj);
 #else
 	return PyLong_AsLong(obj);
 #endif
@@ -174,7 +174,7 @@ static struct module_state _state;
 
 typedef struct{
 	PyObject_HEAD
-	S4_Simulation *S;
+	Simulation S;
 } S4Sim;
 
 typedef struct
@@ -280,8 +280,8 @@ int lanczos_converter(PyObject *obj, struct lanczos_smoothing_settings *s){
 		}
 		if((val = PyDict_GetItemString(obj, "Power"))){
 			s->set_power = 1;
-			if(CheckPyInt(val)){
-				s->power = GetPyInt(val);
+			if(CheckPyLong(val)){
+				s->power = GetPyLong(val);
 				if(s->power <= 0){
 					PyErr_SetString(PyExc_ValueError, "Power must be positive");
 					return 0;
@@ -334,21 +334,21 @@ int excitation_converter(PyObject *obj, S4Excitation_Data *data)
 
 		//get G index
 		pj = PyTuple_GetItem(pi, 0);
-		if(!CheckPyInt(pj))
+		if(!CheckPyLong(pj))
 		{
 			PyErr_SetString(PyExc_TypeError, "the G index must be a integer.");
 			return 0;
 		}
-		data->exg[2 * i + 0] = PyInt_AsLong(pj);
+		data->exg[2 * i + 0] = PyLong_AsLong(pj);
 
 		//get polarization: 'x' or 'y'
 		pj = PyTuple_GetItem(pi, 1);
-		if(!PyString_Check(pj))
+		if(!PyBytes_Check(pj))
 		{
 			PyErr_SetString(PyExc_TypeError, "polalization should be specified by 'x' or 'y'.");
 			return 0;
 		}
-		PyString_AsStringAndSize(pj, &pol, &polLen);
+		PyBytes_AsStringAndSize(pj, &pol, &polLen);
 		if(1 != polLen || ('x' != pol[0] && 'y' != pol[0]))
 		{
 			PyErr_SetString(PyExc_TypeError, "polalization should be specified by 'x' or 'y'.");
@@ -1562,6 +1562,7 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 		"LanczosSmoothing",          /* obj */
 		"SubpixelSmoothing",         /* bool */
 		"ConserveMemory",            /* bool */
+        "BasisFieldDumpPrefix",      /* str */
 		NULL
 	};
 	int verbosity = -1;
@@ -1576,9 +1577,10 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 
 	const char *lattice_truncation = NULL;
 	const char *polarization_basis = NULL;
+	const char *basisfieldprefix = NULL;
 
 	if(!PyArg_ParseTupleAndKeywords(
-		args, kwds, "|isO&iO&sO&O&O&:SetOptions", kwlist,
+		args, kwds, "|isO&iO&sO&O&O&s:SetOptions", kwlist,
 		&verbosity,
 		&lattice_truncation,
 		&bool_converter, &discretized_epsilon,
@@ -1587,7 +1589,8 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 		&polarization_basis,
 		&lanczos_converter, &lanczos_smoothing,
 		&bool_converter, &subpixel_smoothing,
-		&bool_converter, &conserve_memory
+		&bool_converter, &conserve_memory,
+        &basisfieldprefix
 	)){ return NULL; }
 	if(verbosity >= 0){
 		if(verbosity > 9){ verbosity = 9; }
@@ -1616,6 +1619,11 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 	if(polarization_decomp >= 0){
 		self->S->options.use_polarization_basis = polarization_decomp;
 	}
+
+    if(NULL != basisfieldprefix){
+        self->S.options.vector_field_dump_filename_prefix = basisfieldprefix;
+    }
+
 	if(NULL != polarization_basis){
 		if(0 == strcmp("Default", polarization_basis)){
 			self->S->options.use_normal_vector_basis = 0;
