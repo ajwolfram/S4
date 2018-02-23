@@ -10,7 +10,20 @@
 #   SHLIB_EXT (so, dll)
 #   SHLIB_FLAGS
 
-CPPFLAGS += -IS4 -IS4/RNP -IS4/kiss_fft
+#ifeq ($(S4_DEBUG), 1)
+#CPPFLAGS += -DENABLE_S4_TRACE
+#endif
+
+#ifeq ($(S4_DEBUG), 2)
+#CPPFLAGS += -DENABLE_S4_TRACE
+#CPPFLAGS += -DDUMP_MATRICES
+#endif
+
+#ifeq ($(S4_DEBUG), 3)
+#CPPFLAGS += -DENABLE_S4_TRACE
+#CPPFLAGS += -DDUMP_MATRICES
+#CPPFLAGS += -DDUMP_MATRICES_LARGE
+#endif
 
 #### Compilation targets
 
