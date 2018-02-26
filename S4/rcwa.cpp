@@ -2010,16 +2010,30 @@ void GetFieldAtPoint(
 	std::complex<double> hfield[3],
 	std::complex<double> *work // 8*n2
 ){
+    // This is just a way of instantiating 1 with a complex number type, and 0
+    // with a complex number type, which I think is necessary for type
+    // compatibility and whatnot with all the lapack functions.
 	const std::complex<double> z_zero(0.);
 	const std::complex<double> z_one(1.);
 	const size_t n2 = 2*n;
 
+    // This is the memory workspace for the fourier coeffs of the fields. Its
+    // of length 16*N
 	std::complex<double> *eh = work;
 	if(NULL == work){
 		eh = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 8*n2);
 	}
 
+    // This is the function I need to modify. Right now it puts ex, ey, hx, hy
+    // inside eh (i.e the fourier coefficients of the transverse field
+    // components). I need to get at the fourier coefficients of d_normal and
+    // e_tangential and return them, then use the code below to get the real
+    // space reconstructions
 	GetInPlaneFieldVector(n, kx, ky, omega, q, epsilon_inv, epstype, kp, phi, ab, eh);
+    // So eh contains the fourier coefficients of hx, hy, -ey and ex. This code
+    // below sets up pointers to the various continous chunks of the array that
+    // contain the relevant fourier components. Notice the first 6N (3*2*N)
+    // elements of the array are skipped.
 	const std::complex<double> *hx  = &eh[3*n2+0];
 	const std::complex<double> *hy  = &eh[3*n2+n];
 	const std::complex<double> *ney = &eh[4*n2+0];
@@ -2034,26 +2048,47 @@ void GetFieldAtPoint(
 	fH[2] = 0;
 
 	if(NULL != efield && NULL != epsilon_inv){
+        // This is setting up the left side of equation 11 of the paper and
+        // storing in the first N elements of the eh array
 		for(size_t i = 0; i < n; ++i){
 			eh[i] = (ky[i]*hx[i] - kx[i]*hy[i]);
 		}
+        // This multiplies epsilon_inv by eh[0:N] and copies it into the
+        // memory space of eh[N:2N]. Looking at equation 11 of the paper, you
+        // can see after setting up the left size we still need to multiply it
+        // by \hat{\epsilon}_z^-1. We haven't divided by omega yet, for some
+        // reason that is done in the next loop. I think we could do it by
+        // replaceing epsilon_inv[0] in the Scale call by epsilon_inv[0]/omega
+        // and z_one by 1/omega in the MultMV call. Perhaps there is a reason
+        // the author didn't do it this way
 		if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
 			RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
 			RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
 		}else{
+            // eh[n] = (1+0i) * epsilon_inv*eh + 0 * eh[n]
+            // The 0 * eh[n] part seems silly but it allows us to copy the
+            // result of the first term into eh[n]
 			RNP::TBLAS::MultMV<'N'>(n,n, z_one,epsilon_inv,n, eh,1, z_zero,&eh[n],1);
 		}
 	}
 
+    // This loop below is basically equation 5 from the paper!!
 	for(size_t i = 0; i < n; ++i){
+        // This is (\vec{k} + \vec{G}) \cdot \vec{x} at each G vector
 		const double theta = (kx[i]*r[0] + ky[i]*r[1]);
-
+        // This is using Euler's rule to compute e^{i (\vec{k} + \vec{G}) \cdot \vec{x})
 		const std::complex<double> phase(cos(theta),sin(theta));
+        // And this is just where each individual term is added to the total
 		fH[0] += hx[i]*phase;
 		fH[1] += hy[i]*phase;
 		fE[0] += ex[i]*phase;
 		fE[1] -= ney[i]*phase;
+        // These is eqn 14 from the paper. z component of h is expressed in
+        // terms of transverse components of e
 		fH[2] += (kx[i] * -ney[i] - ky[i] * ex[i]) * (phase / omega);
+        // This is the final bit of equation 11 from the paper. We need to
+        // divide by omega to get the fourier coefficients of e_z, then
+        // multiply by phase and sum to get real space resconstruction
 		fE[2] += eh[n+i] * (phase / omega);
 	}
 
@@ -2072,6 +2107,132 @@ void GetFieldAtPoint(
 		rcwa_free(eh);
 	}
 }
+
+
+void GetFieldAtPointImproved(
+	size_t n, // glist.n
+	const double *kx,
+	const double *ky,
+	std::complex<double> omega,
+	const std::complex<double> *q, // length 2*glist.n
+	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	const std::complex<double> *phi, // size (2*glist.n)^2
+	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL
+	const std::complex<double> *P, // Projection operator. 2nx2n matrix, size 4n^2
+	int epstype,
+	const std::complex<double> *ab, // length 4*glist.n
+	const double r[2], // coordinates within layer
+	std::complex<double> efield[3],
+	std::complex<double> hfield[3],
+	std::complex<double> *work // 8*n2
+){
+    // This is just a way of instantiating 1 with a complex number type, and 0
+    // with a complex number type, which I think is necessary for type
+    // compatibility and whatnot with all the lapack functions.
+	const std::complex<double> z_zero(0.);
+	const std::complex<double> z_one(1.);
+	const size_t n2 = 2*n;
+
+    printf("INSIDE RCWA.CPP GetFieldAtPointImproved\n");
+    printf("P = %p\n", P);
+#ifdef DUMP_MATRICES
+    if(NULL != P){
+        DUMP_STREAM << "P:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,P,n2, DUMP_STREAM) << std::endl << std::endl;
+    }
+#endif
+
+    // This is the memory workspace for the fourier coeffs of the fields. Its
+    // of length 16*N
+	std::complex<double> *eh = work;
+	if(NULL == work){
+		eh = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 8*n2);
+	}
+
+    // This is the function I need to modify. Right now it puts ex, ey, hx, hy
+    // inside eh (i.e the fourier coefficients of the transverse field
+    // components). I need to get at the fourier coefficients of d_normal and
+    // e_tangential and return them, then use the code below this function call
+    // to get the real space reconstructions
+	GetInPlaneFieldVector(n, kx, ky, omega, q, epsilon_inv, epstype, kp, phi, ab, eh);
+    // So eh contains the fourier coefficients of hx, hy, -ey and ex. This code
+    // below sets up pointers to the various continous chunks of the array that
+    // contain the relevant fourier components. Notice the first 6N (3*2*N)
+    // elements of the array are skipped.
+	const std::complex<double> *hx  = &eh[3*n2+0];
+	const std::complex<double> *hy  = &eh[3*n2+n];
+	const std::complex<double> *ney = &eh[4*n2+0];
+	const std::complex<double> *ex  = &eh[4*n2+n];
+
+	std::complex<double> fE[3], fH[3];
+	fE[0] = 0;
+	fE[1] = 0;
+	fE[2] = 0;
+	fH[0] = 0;
+	fH[1] = 0;
+	fH[2] = 0;
+
+	if(NULL != efield && NULL != epsilon_inv){
+        // This is setting up the left side of equation 11 of the paper and
+        // storing in the first N elements of the eh array
+		for(size_t i = 0; i < n; ++i){
+			eh[i] = (ky[i]*hx[i] - kx[i]*hy[i]);
+		}
+        // This multiplies epsilon_inv by eh[0:N] and copies it into the
+        // memory space of eh[N:2N]. Looking at equation 11 of the paper, you
+        // can see after setting up the left size we still need to multiply it
+        // by \hat{\epsilon}_z^-1. We haven't divided by omega yet, for some
+        // reason that is done in the next loop. I think we could do it by
+        // replaceing epsilon_inv[0] in the Scale call by epsilon_inv[0]/omega
+        // and z_one by 1/omega in the MultMV call. Perhaps there is a reason
+        // the author didn't do it this way
+		if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+			RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
+			RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
+		}else{
+            // eh[n] = (1+0i) * epsilon_inv*eh + 0 * eh[n]
+            // The 0 * eh[n] part seems silly but it allows us to copy the
+            // result of the first term into eh[n]
+			RNP::TBLAS::MultMV<'N'>(n,n, z_one,epsilon_inv,n, eh,1, z_zero,&eh[n],1);
+		}
+	}
+
+    // This loop below is basically equation 5 from the paper!!
+	for(size_t i = 0; i < n; ++i){
+        // This is (\vec{k} + \vec{G}) \cdot \vec{x} at each G vector
+		const double theta = (kx[i]*r[0] + ky[i]*r[1]);
+        // This is using Euler's rule to compute e^{i (\vec{k} + \vec{G}) \cdot \vec{x})
+		const std::complex<double> phase(cos(theta),sin(theta));
+        // And this is just where each individual term is added to the total
+		fH[0] += hx[i]*phase;
+		fH[1] += hy[i]*phase;
+		fE[0] += ex[i]*phase;
+		fE[1] -= ney[i]*phase;
+        // These is eqn 14 from the paper. z component of h is expressed in
+        // terms of transverse components of e
+		fH[2] += (kx[i] * -ney[i] - ky[i] * ex[i]) * (phase / omega);
+        // This is the final bit of equation 11 from the paper. We need to
+        // divide by omega to get the fourier coefficients of e_z, then
+        // multiply by phase and sum to get real space resconstruction
+		fE[2] += eh[n+i] * (phase / omega);
+	}
+
+	if(NULL != efield && NULL != epsilon_inv){
+		efield[0] = fE[0];
+		efield[1] = fE[1];
+		efield[2] = fE[2];
+	}
+	if(NULL != hfield){
+		hfield[0] = fH[0];
+		hfield[1] = fH[1];
+		hfield[2] = fH[2];
+	}
+
+	if(NULL == work){
+		rcwa_free(eh);
+	}
+}
+
 void GetFieldOnGrid(
 	size_t n, // glist.n
 	int *G,

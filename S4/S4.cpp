@@ -3430,7 +3430,9 @@ std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4
 	S4_TRACE("> Simulation_GetCachedField(S=%p, layer=%p) [omega=%f]\n", S, layer, S->omega[0]);
 	std::complex<double> *P = NULL;
 	FieldCache *f = S->field_cache;
+    printf("Given Layer = %s\n", layer->name);
 	while(NULL != f){
+        printf("Other layer = %s\n", f->layer->name);
 		if(layer == f->layer && S->n_G == f->n){
 			P = f->P;
 			break;

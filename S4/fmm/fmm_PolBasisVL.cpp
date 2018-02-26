@@ -137,6 +137,9 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 			}
 		}else{
 			S4_VERB(1, "Generating polarization vector field of size %d x %d\n", ngrid[0], ngrid[1]);
+            // 2nd argument here determines the type of vector field. 0 means
+            // tangential, 1 means normal. Normal vector fields are currently
+            // broken
 			int error = Pattern_GenerateFlowField(&L->pattern, 0, S->Lr, ngrid[0], ngrid[1], vfield);
 
 			if(0 != error){
@@ -187,8 +190,9 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 			}
 			free(filename);
 		}
-
-
+			
+	    // Here vfield contains the real space vector field. It seems to be
+        // copied exactly into par
 		for(ii[1] = 0; ii[1] < ngrid[1]; ++ii[1]){
 			for(ii[0] = 0; ii[0] < ngrid[0]; ++ii[0]){
 				par[2*(ii[0]+ii[1]*ngrid[0])+0] = vfield[2*(ii[0]+ii[1]*ngrid[0])+0];
@@ -257,13 +261,37 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 	// mDelta will contain -Delta = inv(Eta) - Epsilon
 	// Epsilon2 still only has Epsilon along its diagonal
 	RNP::TBLAS::SetMatrix<'A'>(n,n, 0.,1., mDelta,n);
+    // I think this is just intended to invert Eta and put it along the
+    // diagonal of mDelta. Recall Delta = epsilon - eta^-1 so
+    // -Delta = eta^-1 - epsilon. This seems to make sense because in the loop
+    // we then subtract epsilon from mDelta
 	RNP::LinearSolve<'N'>(n,n, Eta,n, mDelta,n, NULL, NULL);
 	for(int i = 0; i < n; ++i){
+        // alpha = -1
+        // x = Epsilon2
+        // y = mDelta
+        // Computes y := alpha*x + y
 		RNP::TBLAS::Axpy(n, std::complex<double>(-1.), &Epsilon2[0+i*n2],1, &mDelta[0+i*n],1);
 	}
+    // This is looping through blocks of the matrix in equation 51 (i.e Epsilon
+    // 2) and filling in each sub-block independently. w indexes the block
 	for(int w = 0; w < 4; ++w){
+        // If w == 1, Erow = n, else Erow = 0
+        // If w == 2, Ecol = n, else Ecol = 0
+        // w = 0, Erow = 0 , Ecol = 0, top left block
+        // w = 1, Erow = n, Ecol = 0, bottom left block
+        // w = 2, Erow = 0, Ecol = n, top right block
+        // w = 3, Erow = 0, Ecol = 0, Confused. We jump back to the beginning
+        // of the array so all I can think of is that the diagonal blocks are
+        // equal
 		int Erow = (w&1 ? n : 0);
 		int Ecol = (w&2 ? n : 0);
+        // m = n, n = n, k = n
+        // mDelta sub-block = A (nxn)
+        // P sub-block = B (nxn)
+        // Epsilon2 sub-block = C (nxn)
+        // alpha = beta = 1
+        // Computes C := alpha*A*B + beta*C
 		RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(1.),mDelta,n, &P[Erow+Ecol*n2],n2, std::complex<double>(1.),&Epsilon2[Erow+Ecol*n2],n2);
 	}
 	if(NULL != work){ S4_free(work); }

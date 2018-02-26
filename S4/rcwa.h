@@ -480,6 +480,22 @@ void GetFieldAtPoint(
 	std::complex<double> hfield[3],
 	std::complex<double> *work = NULL
 );
+void GetFieldAtPointImproved(
+	size_t n, // glist.n
+	const double *kx, const double *ky,
+	std::complex<double> omega,
+	const std::complex<double> *q, // length 2*glist.n
+	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	const std::complex<double> *phi, // size (2*glist.n)^2
+	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL || kp == NULL
+	const std::complex<double> *P, // the projection operator that project cartesian fields onto local basis
+	int epstype,
+	const std::complex<double> *ab, // length 4*glist.n
+	const double r[2], // coordinates within layer
+	std::complex<double> efield[3],
+	std::complex<double> hfield[3],
+	std::complex<double> *work = NULL
+);
 void GetFieldOnGrid(
 	size_t n, // glist.n
 	int *G, // length 2*glist.n, pairs of uv coordinates of Lk
