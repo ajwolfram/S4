@@ -489,6 +489,8 @@ void GetFieldAtPointImproved(
 	const std::complex<double> *phi, // size (2*glist.n)^2
 	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL || kp == NULL
 	const std::complex<double> *P, // the projection operator that project cartesian fields onto local basis
+	const std::complex<double> *Epsilon2, // the projection operator that project cartesian fields onto local basis
+	const std::complex<double> epsilon, // The scalar, real space value of epsilon
 	int epstype,
 	const std::complex<double> *ab, // length 4*glist.n
 	const double r[2], // coordinates within layer
