@@ -1660,6 +1660,9 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 	if(use_weismann_formulation >= 0){
 		self->S.options.use_weismann_formulation = use_weismann_formulation;
 	}
+	if(use_weismann_formulation >= 0){
+		self->S.options.use_weismann_formulation = use_weismann_formulation;
+	}
 	Py_RETURN_NONE;
 }
 
