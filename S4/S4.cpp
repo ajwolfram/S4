@@ -2941,13 +2941,21 @@ int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], doubl
     if(0 != M->type){
         return -1;
     }
-    std::complex<double> epsilon(M->eps.s[0], M->eps.s[1]);
-
-
-//	GetFieldAtPoint(
-//		S->n_G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
-//		Lbands->q, Lbands->kp, Lbands->phi, Lbands->Epsilon_inv, Lbands->epstype,
-//		ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
+    std::complex<double> epsilon(M->eps.s[0], M->eps.s[1]);    
+    // Now that I had the shape, I need to figure out what material it contains
+    printf("Epsilon = %f + I*%f\n", epsilon.real(), epsilon.imag());
+    if(S->options.use_weismann_formulation > 0) {
+        printf("\nUsing Weismann Formulation!!\n");
+        GetFieldAtPointImproved(
+            S->n_G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
+            Lbands->q, Lbands->kp, Lbands->phi, Lbands->Epsilon_inv, P, Lbands->Epsilon2, epsilon, Lbands->epstype,
+            ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
+    } else {
+        GetFieldAtPoint(
+            S->n_G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
+            Lbands->q, Lbands->kp, Lbands->phi, Lbands->Epsilon_inv, Lbands->epstype,
+            ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
+    }
 	if(NULL != fE){
 		fE[0] = efield[0].real();
 		fE[1] = efield[1].real();

@@ -113,7 +113,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         // Number of real space grid points
 		const int ng2 = ngrid[0]*ngrid[1];
 
-        // Memory workspace array N = number of basis terms, ng = number of
+        // Memory workspace array. N = number of basis terms, ng = number of
         // real space grid points for vector field. Has length 6N^2 + 4*ng
 		work = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*(6*nn + 4*ng2));
         // mDelta stored from beginning of workspace to N^2
@@ -249,9 +249,8 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 				}
 			}
 		}
-        // The real and
-        // imaginary parts of the vector field are stored adjacent to one
-        // another in vfield,
+        // The x and y components of the vector field at each point are stored
+        // adjacent to one another in vfield,
 
 		fft_plan_destroy(plan);
 

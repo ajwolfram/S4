@@ -2337,12 +2337,16 @@ void GetFieldAtPointImproved(
         // elements
         // First dnormal
         RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,N,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1);
+#ifdef DUMP_MATRICES
         DUMP_STREAM << "Dnormal:" << std::endl;
         RNP::IO::PrintVector(n2,dn_and_et,1,DUMP_STREAM) << std::endl << std::endl;
+#endif
         // Now etangential
         RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,P,n2,&eh[4*n2],1, z_zero,&dn_and_et[n2],1);
+#ifdef DUMP_MATRICES
         DUMP_STREAM << "Etangential:" << std::endl;
         RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;
+#endif
         // We don't need N anymore
         rcwa_free(N);
     }
@@ -2382,8 +2386,10 @@ void GetFieldAtPointImproved(
         fH[0] += hx[i]*phase;
         fH[1] += hy[i]*phase;
         if(NULL != P){
-            fE[0] += dnx[i]*(phase/epsilon) + etx[i]*phase;
-            fE[1] -= ndny[i]*(phase/epsilon) + nety[i]*phase;
+            /* fE[0] += dnx[i]*(phase/epsilon) + etx[i]*phase; */
+            fE[0] += etx[i]*phase;
+            /*fE[1] -= ndny[i]*(phase/epsilon) + nety[i]*phase;*/
+            fE[1] -= nety[i]*phase;
         } else {
             fE[0] += ex[i]*phase;
             fE[1] -= ney[i]*phase;

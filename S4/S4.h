@@ -100,6 +100,9 @@ typedef struct S4_Options_{
 	// be stored in memory when possible.
 	int use_less_memory;
 
+    // Use Weismann's improved formulation for the fields
+    int use_weismann_formulation;
+
 	S4_real lanczos_smoothing_width;
 	int lanczos_smoothing_power;
 } S4_Options;
