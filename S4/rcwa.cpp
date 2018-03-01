@@ -1956,7 +1956,7 @@ void GetZPoyntingFluxComponents(
 	}
 }
 
-static void GetInPlaneFieldVectorImproved(
+static void GetInPlaneFieldVector(
 	size_t n, // glist.n
 	const double *kx, const double *ky,
 	std::complex<double> omega,
@@ -2045,44 +2045,6 @@ static void GetInPlaneFieldVectorImproved(
     // -ey = eh[8N:9N]
 	const std::complex<double> *ney = &eh[4*n2+0];
     // ex = eh[9N:10N]
-	const std::complex<double> *ex  = &eh[4*n2+n];
-	*/
-}
-
-static void GetInPlaneFieldVector(
-	size_t n, // glist.n
-	const double *kx, const double *ky,
-	std::complex<double> omega,
-	const std::complex<double> *q, // length 2*glist.n
-	const std::complex<double> *Epsilon_inv, // size (glist.n)^2; inv of usual dielectric Fourier coupling matrix
-	int epstype,
-	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
-	const std::complex<double> *phi, // size (2*glist.n)^2
-	const std::complex<double> *ab, // length 4*glist.n
-	std::complex<double> *eh // length 8*2*glist.n
-){
-	const size_t n2 = 2*n;
-	const size_t n4 = 2*n2;
-
-	for(size_t i = 0; i < n2; ++i){
-		eh[4*n2+i] = ab[i]/(omega*q[i]);
-		eh[5*n2+i] = -ab[i+n2]/(omega*q[i]);
-	}
-	RNP::TBLAS::Copy(n4, ab,1, &eh[6*n2],1);
-	if(NULL == phi){
-		RNP::TBLAS::CopyMatrix<'A'>(n2,4, &eh[4*n2],n2, &eh[0],n2);
-	}else{
-		RNP::TBLAS::MultMM<'N','N'>(n2,4,n2, std::complex<double>(1.),phi,n2, &eh[4*n2],n2, std::complex<double>(0.),&eh[0],n2);
-	}
-	// At this point, the 4 columns of &eh[0] (length n2) are
-	// [ phi.inv(q).a   -phi.inv(q).b   phi.a   phi.b ]
-	MultKPMatrix("N", omega, n, kx, ky, Epsilon_inv, epstype, kp, 2, &eh[0],n2, &eh[4*n2],n2);
-	RNP::TBLAS::Axpy(n2, std::complex<double>(1.),&eh[2*n2],1, &eh[3*n2],1);
-	RNP::TBLAS::Axpy(n2, std::complex<double>(1.),&eh[5*n2],1, &eh[4*n2],1);
-	/*
-	const std::complex<double> *hx  = &eh[3*n2+0];
-	const std::complex<double> *hy  = &eh[3*n2+n];
-	const std::complex<double> *ney = &eh[4*n2+0];
 	const std::complex<double> *ex  = &eh[4*n2+n];
 	*/
 }
@@ -2251,21 +2213,16 @@ void GetFieldAtPointImproved(
 	if(NULL == work){
 		eh = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 8*n2);
 	}
-
-    // This is the function I need to modify. Right now it puts ex, ey, hx, hy
-    // inside eh (i.e the fourier coefficients of the transverse field
-    // components). I need to get at the fourier coefficients of d_normal and
-    // e_tangential and return them, then use the code below this function call
-    // to get the real space reconstructions
+	
+    // The function below puts ex, ey, hx, hy inside eh (i.e the fourier
+    // coefficients of the transverse field components). I need to get at the
+    // fourier coefficients of d_normal and e_tangential, then use the code
+    // below this function call to get the real space reconstructions
     // hx = eh[6N:7N]
-	// const std::complex<double> *hx  = &eh[3*n2+0];
     // hy = eh[7N:8N]
-	// const std::complex<double> *hy  = &eh[3*n2+n];
     // -ey = eh[8N:9N]
-	// const std::complex<double> *ney = &eh[4*n2+0];
     // ex = eh[9N:10N]
-	// const std::complex<double> *ex  = &eh[4*n2+n];
-	GetInPlaneFieldVectorImproved(n, kx, ky, omega, q, epsilon_inv, epstype, kp, phi, ab, eh);
+	GetInPlaneFieldVector(n, kx, ky, omega, q, epsilon_inv, epstype, kp, phi, ab, eh);
     // So eh contains the fourier coefficients of hx, hy, -ey and ex. This code
     // below sets up pointers to the various continous chunks of the array that
     // contain the relevant fourier components. Notice the first 6N (3*2*N)
@@ -2304,7 +2261,29 @@ void GetFieldAtPointImproved(
     const std::complex<double> *nety = &dn_and_et[n2];
     const std::complex<double> *etx = &dn_and_et[n2+n];
     if(NULL != P){
-        // First lets construct \hat{N}
+        // First construct eta_inv
+        // Allocate memory for eta^-1 and set it to the identity
+        std::complex<double> *eta_inv = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n*n);
+        RNP::TBLAS::SetMatrix<'A'>(n,n, z_zero, z_one, eta_inv, n);
+        // Copy epsilon_inv so we can get it's inverse. It's passed in as a const
+        // so we need to copy it to a pointer of a non-const type before we can
+        // invert
+        std::complex<double> *epsilon_inv_temp = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n*n);
+        RNP::TBLAS::CopyMatrix<'A'>(n,n, epsilon_inv, n, epsilon_inv_temp, n);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "epsilon_inv_temp:" << std::endl;
+        RNP::IO::PrintMatrix(n,n,epsilon_inv_temp,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Finally compute it's inverse
+        RNP::LinearSolve<'N'>(n,n, epsilon_inv_temp,n, eta_inv,n, NULL, NULL);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "eta_inv:" << std::endl;
+        RNP::IO::PrintMatrix(n,n,eta_inv,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // eta_inv now contains \hat{\eta}^-1. We don't need epsilon_inv_temp
+        // anymore
+        rcwa_free(epsilon_inv_temp);
+        // Then lets construct \hat{N}
         std::complex<double> *N;
         N = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n2*n2);
         // Set N to the identity first
@@ -2322,8 +2301,8 @@ void GetFieldAtPointImproved(
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "N:" << std::endl;
         RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
-        DUMP_STREAM << "Epsilon_inv:" << std::endl;
-        RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl;
+        /* DUMP_STREAM << "Epsilon_inv:" << std::endl; */
+        /* RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl; */
 #endif
         // Now we compute the matrix product of N and Epsilon2 and store it in
         // the memory space of N
@@ -2332,8 +2311,8 @@ void GetFieldAtPointImproved(
         // Compute the thing inside the parenthesis in eqn 9a of Weismanns
         // paper and store it in the memory space of Ncombo
         // This is looping through blocks of the matrix N (2Nx2N) and
-        // multiplying each sub-block by Epsilon_inv (NxN) independently. w
-        // indexes the block.
+        // multiplying each sub-block by eta_inv (NxN) independently. w
+        // indexes the block. 
         std::complex<double> *Ncombo;
         Ncombo = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n2*n2);
         for(int w = 0; w < 4; ++w){
@@ -2342,8 +2321,7 @@ void GetFieldAtPointImproved(
             // w = 0, Erow = 0 , Ecol = 0, top left block
             // w = 1, Erow = n, Ecol = 0, top right block
             // w = 2, Erow = 0, Ecol = n, bottom left block
-            // w = 3, Erow = 0, Ecol = 0, We jump back to the beginning of the
-            // N because the diagonal blocks are equal
+            // w = 3, Erow = n, Ecol = n, bottom right block
             int Erow = (w&1 ? n : 0);
             int Ecol = (w&2 ? n : 0);
             // m = n, n = n, k = n
@@ -2354,11 +2332,11 @@ void GetFieldAtPointImproved(
             // Computes C := alpha*A*B + beta*C
             // We'll do the first term first, which means right multiplying by Epsilon_inv.
             // We don't add the contents of Ncombo here because its empty
-            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),&N[Erow+Ecol*n2],n2,epsilon_inv,n,std::complex<double>(0),&Ncombo[Erow+Ecol*n2],n2);
+            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),&N[Erow+Ecol*n2],n2,eta_inv,n,std::complex<double>(0),&Ncombo[Erow+Ecol*n2],n2);
             // Now do the second term, which means left multiplying by
             // Epsilon_inv. Now we _do_ add the contents of Ncombo, bcause it
             // already contains the first term
-            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),epsilon_inv,n,&N[Erow+Ecol*n2],n2,std::complex<double>(1.),&Ncombo[Erow+Ecol*n2],n2);
+            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),eta_inv,n,&N[Erow+Ecol*n2],n2,std::complex<double>(1.),&Ncombo[Erow+Ecol*n2],n2);
         }
 
 #ifdef DUMP_MATRICES
@@ -2484,6 +2462,7 @@ void GetFieldOnGrid(
 	const std::complex<double> z_zero(0.);
 	const std::complex<double> z_one(1.);
 	const size_t n2 = 2*n;
+    // Total # of real space sampling points
 	const size_t N = nxy[0]*nxy[1];
 	const int nxyoff[2] = { (int)(nxy[0]/2), (int)(nxy[1]/2) };
 	int inxy[2] = { (int)nxy[0], (int)nxy[1] };
@@ -2497,6 +2476,13 @@ void GetFieldOnGrid(
 	const std::complex<double> *ney = &eh[4*n2+0];
 	const std::complex<double> *ex  = &eh[4*n2+n];
 
+    // This is allocating memory for 6 Fourier transforms of size N (number of
+    // real space grid points requested). This makes sense because there are 3
+    // E field components to compute, and 3 H field components to compute (6
+    // overall)
+    // The two arrays below are arrays of pointers. This means each element in
+    // from/to is a pointer to an entirely new memory space that is allocated
+    // by the fft_alloc_complex function
 	std::complex<double> *from[6];
 	std::complex<double> *to[6];
 	fft_plan plan[6];
@@ -2504,6 +2490,10 @@ void GetFieldOnGrid(
 		from[i] = fft_alloc_complex(N);
 		to[i] = fft_alloc_complex(N);
 		memset(from[i], 0, sizeof(std::complex<double>) * N);
+        // This is just a function that allocates a struct that "plans" or
+        // configures the Fourier transform. Mainly astruct containing the
+        // pointers to memory space containing real space data (from) and
+        // pointer to the memory space for the results (to)
 		plan[i] = fft_plan_dft_2d(inxy_rev, from[i], to[i], 1);
 	}
 
