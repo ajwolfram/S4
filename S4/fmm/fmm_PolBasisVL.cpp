@@ -304,8 +304,8 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         // If w == 1, Erow = n, else Erow = 0
         // If w == 2, Ecol = n, else Ecol = 0
         // w = 0, Erow = 0 , Ecol = 0, top left block
-        // w = 1, Erow = n, Ecol = 0, bottom left block
-        // w = 2, Erow = 0, Ecol = n, top right block
+        // w = 1, Erow = n, Ecol = 0, top right block
+        // w = 2, Erow = 0, Ecol = n, bottom left block
         // w = 3, Erow = 0, Ecol = 0, Confused. We jump back to the beginning
         // of the array so all I can think of is that the diagonal blocks are
         // equal

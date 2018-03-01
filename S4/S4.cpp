@@ -93,7 +93,9 @@ struct LayerModes{
 	std::complex<double> *kp; // size (2*glist.n)^2 (k-parallel matrix)
 	std::complex<double> *phi; // size (2*glist.n)^2
 	std::complex<double> *Epsilon2; // size (2*glist.n)^2 (dielectric/normal-field matrix)
-	std::complex<double> *Epsilon_inv; // size (glist.n)^2 inverse of usual dielectric Fourier coupling matrix
+	std::complex<double> *Epsilon_inv; // size (glist.n)^2 inverse of usual dielectric Fourier coupling matrix.
+                                       // This is the same as \hat{\eta} in the notation of the paper i.e the Fourier
+                                       // transform of 1/epsilon, and not 1 / \hat{epsilon}
 	// max total size needed: 2n+13nn
 	int epstype;
 };
