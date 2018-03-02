@@ -2174,6 +2174,7 @@ void GetFieldAtPointImproved(
 	const std::complex<double> *phi, // size (2*glist.n)^2
 	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL. This is \hat{\eta} in paper notation
 	const std::complex<double> *P, // Projection operator. 2nx2n matrix, size 4n^2
+	const std::complex<double> *W, // Projection operator. 2nx2n matrix, size 4n^2
 	const std::complex<double> *Epsilon2, // curly Epsilon2 matrix (see eqn 51)
 	const std::complex<double> epsilon, // The scalar, real space value of epsilon
 	int epstype,
@@ -2192,16 +2193,19 @@ void GetFieldAtPointImproved(
 
     printf("INSIDE RCWA.CPP GetFieldAtPointImproved\n");
     printf("P = %p\n", P);
+    printf("W = %p\n", W);
 #ifdef DUMP_MATRICES
     if(NULL != P){
         DUMP_STREAM << "P:" << std::endl;
         RNP::IO::PrintMatrix(n2,n2,P,n2, DUMP_STREAM) << std::endl << std::endl;
+        DUMP_STREAM << "W:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,W,n2, DUMP_STREAM) << std::endl << std::endl;
     }
 #endif
     printf("INSIDE RCWA.CPP GetFieldAtPointImproved\n");
     printf("Epsilon2 = %p\n", Epsilon2);
 #ifdef DUMP_MATRICES
-    if(NULL != P){
+    if(NULL != W){
         DUMP_STREAM << "Epsilon2:" << std::endl;
         RNP::IO::PrintMatrix(n2,n2,Epsilon2,n2, DUMP_STREAM) << std::endl << std::endl;
     }
@@ -2259,94 +2263,8 @@ void GetFieldAtPointImproved(
     const std::complex<double> *ndny = &dn_and_et[0];
     const std::complex<double> *dnx = &dn_and_et[n];
     const std::complex<double> *nety = &dn_and_et[n2];
-    const std::complex<double> *etx = &dn_and_et[n2+n];
-    if(NULL != P){
-        // First construct eta_inv
-        // Allocate memory for eta^-1 and set it to the identity
-        std::complex<double> *eta_inv = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n*n);
-        RNP::TBLAS::SetMatrix<'A'>(n,n, z_zero, z_one, eta_inv, n);
-        // Copy epsilon_inv so we can get it's inverse. It's passed in as a const
-        // so we need to copy it to a pointer of a non-const type before we can
-        // invert
-        std::complex<double> *epsilon_inv_temp = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n*n);
-        RNP::TBLAS::CopyMatrix<'A'>(n,n, epsilon_inv, n, epsilon_inv_temp, n);
-#ifdef DUMP_MATRICES
-        DUMP_STREAM << "epsilon_inv_temp:" << std::endl;
-        RNP::IO::PrintMatrix(n,n,epsilon_inv_temp,n, DUMP_STREAM) << std::endl << std::endl;
-#endif
-        // Finally compute it's inverse
-        RNP::LinearSolve<'N'>(n,n, epsilon_inv_temp,n, eta_inv,n, NULL, NULL);
-#ifdef DUMP_MATRICES
-        DUMP_STREAM << "eta_inv:" << std::endl;
-        RNP::IO::PrintMatrix(n,n,eta_inv,n, DUMP_STREAM) << std::endl << std::endl;
-#endif
-        // eta_inv now contains \hat{\eta}^-1. We don't need epsilon_inv_temp
-        // anymore
-        rcwa_free(epsilon_inv_temp);
-        // Then lets construct \hat{N}
-        std::complex<double> *N;
-        N = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n2*n2);
-        // Set N to the identity first
-        RNP::TBLAS::SetMatrix<'A'>(n2,n2, z_zero, z_one, N, n2);
-#ifdef DUMP_MATRICES
-        DUMP_STREAM << "N:" << std::endl;
-        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
-#endif
-        // Now subtract P from it. This loops through each row and treats each row
-        // as a vector, computing
-        // N[i,:] = -1*P[i,:] + N[i,:]
-        for(size_t i = 0; i < n2; ++i){
-            RNP::TBLAS::Axpy(n2, std::complex<double>(-1.), &P[0+i*n2], 1, &N[0+i*n2], 1);
-        }
-#ifdef DUMP_MATRICES
-        DUMP_STREAM << "N:" << std::endl;
-        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
-        /* DUMP_STREAM << "Epsilon_inv:" << std::endl; */
-        /* RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl; */
-#endif
-        // Now we compute the matrix product of N and Epsilon2 and store it in
-        // the memory space of N
-		/* RNP::TBLAS::MultMM<'N','N'>(n2,n2,n2, std::complex<double>(1.),N,n2,Epsilon2,n2,std::complex<double>(0.),N,n2); */
-
-        // Compute the thing inside the parenthesis in eqn 9a of Weismanns
-        // paper and store it in the memory space of Ncombo
-        // This is looping through blocks of the matrix N (2Nx2N) and
-        // multiplying each sub-block by eta_inv (NxN) independently. w
-        // indexes the block. 
-        std::complex<double> *Ncombo;
-        Ncombo = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n2*n2);
-        for(int w = 0; w < 4; ++w){
-            // If w == 1, Erow = n, else Erow = 0
-            // If w == 2, Ecol = n, else Ecol = 0
-            // w = 0, Erow = 0 , Ecol = 0, top left block
-            // w = 1, Erow = n, Ecol = 0, top right block
-            // w = 2, Erow = 0, Ecol = n, bottom left block
-            // w = 3, Erow = n, Ecol = n, bottom right block
-            int Erow = (w&1 ? n : 0);
-            int Ecol = (w&2 ? n : 0);
-            // m = n, n = n, k = n
-            // mDelta sub-block = A (nxn)
-            // P sub-block = B (nxn)
-            // Epsilon2 sub-block = C (nxn)
-            // alpha = beta = 1
-            // Computes C := alpha*A*B + beta*C
-            // We'll do the first term first, which means right multiplying by Epsilon_inv.
-            // We don't add the contents of Ncombo here because its empty
-            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),&N[Erow+Ecol*n2],n2,eta_inv,n,std::complex<double>(0),&Ncombo[Erow+Ecol*n2],n2);
-            // Now do the second term, which means left multiplying by
-            // Epsilon_inv. Now we _do_ add the contents of Ncombo, bcause it
-            // already contains the first term
-            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),eta_inv,n,&N[Erow+Ecol*n2],n2,std::complex<double>(1.),&Ncombo[Erow+Ecol*n2],n2);
-        }
-
-#ifdef DUMP_MATRICES
-        /* DUMP_STREAM << "N*Epsilon2:" << std::endl; */
-        /* RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl; */
-#endif
-#ifdef DUMP_MATRICES
-        DUMP_STREAM << "Ncombo:" << std::endl;
-        RNP::IO::PrintMatrix(n2,n2,Ncombo,n2, DUMP_STREAM) << std::endl << std::endl;
-#endif
+    const std::complex<double> *etx = &dn_and_et[n2+n]; 
+    if(NULL != W){
         // We now have all we need to get the Fourier coefficients of the
         // normal component of d and the tangential components of e. I
         // allocated a new array for the dnormal components and etangential
@@ -2356,7 +2274,7 @@ void GetFieldAtPointImproved(
         // This is my approach
         /* RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,N,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1); */
         // This is Weismann's approach verbatim
-        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,Ncombo,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1);
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,W,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1);
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "Dnormal:" << std::endl;
         RNP::IO::PrintVector(n2,dn_and_et,1,DUMP_STREAM) << std::endl << std::endl;
@@ -2367,9 +2285,6 @@ void GetFieldAtPointImproved(
         DUMP_STREAM << "Etangential:" << std::endl;
         RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;
 #endif
-        // We don't need N anymore
-        rcwa_free(N);
-        rcwa_free(Ncombo);
     }
     if(NULL != efield && NULL != epsilon_inv){
         // This is setting up the left side of equation 11 of the paper and

@@ -225,6 +225,15 @@ int S4_Simulation_ExcitationPlanewave(
 int S4_Simulation_ExcitationExterior(S4_Simulation *S, int n, const int *exg, const double *ex);
 int S4_Simulation_ExcitationDipole(S4_Simulation *S, const double k[2], const char *layer, const double pos[2], const double moment[6]);
 
+// Internal functions
+#ifdef __cplusplus
+// Field cache manipulation
+void Simulation_InvalidateFieldCache(Simulation *S);
+std::complex<double>* Simulation_GetCachedField(const Simulation *S, const Layer *layer);
+std::complex<double>* Simulation_GetCachedW(const Simulation *S, const Layer *layer);
+void Simulation_AddFieldToCache(Simulation *S, const Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
+                                const std::complex<double> *W, size_t Wlen);
+#endif
 /***********************************/
 /* Solution hint related functions */
 /***********************************/

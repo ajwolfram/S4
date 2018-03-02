@@ -111,6 +111,9 @@ struct FieldCache{
 	int n;
 	const S4_Layer *layer;
 	std::complex<double> *P; // 2n x 2n matrix, allocated along with this structure itself
+	std::complex<double> *W; // 2n x 2n matrix, allocated along with this structure itself.
+                             // I'm calling it the "Weismann operator" from eqn 9a of
+                             // Weismanns paper
 	FieldCache *next;
 };
 
@@ -130,7 +133,9 @@ int Simulation_GetSMatrix(S4_Simulation *S, int layer_from, int layer_to, std::c
 // Field cache manipulation
 void Simulation_InvalidateFieldCache(S4_Simulation *S);
 std::complex<double>* Simulation_GetCachedField(S4_Simulation *S, const S4_Layer *layer);
-void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen);
+std::complex<double>* Simulation_GetCachedW(S4_Simulation *S, const S4_Layer *layer);
+void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
+                                const std::complex<double> *W, size_t Wlen);
 
 void Layer_Destroy(S4_Layer *L){
 	S4_TRACE("> Layer_Destroy(L=%p)\n", L);
@@ -2908,54 +2913,35 @@ int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], doubl
 	//RNP::IO::PrintVector(n4, ab, 1);
 	TranslateAmplitudes(S->n_G, Lmodes->q, L->thickness, dz, ab);
 	std::complex<double> efield[3], hfield[3];
-//	GetFieldAtPoint(
-//		S->n_G, S->kx, S->ky, std::complex<double>(S->omega[0],S->omega[1]),
-//		Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
-//		ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
-    // Now that I had the shape, I need to figure out what material it contains
-    GetFieldAtPointImproved(
-    S->n_G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
-    Lbands->q, Lbands->kp, Lbands->phi, Lbands->Epsilon_inv, P, Lbands->Epsilon2, epsilon, Lbands->epstype,
-    ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
-    // I need to jump in right here and do a few things
-    // TODO:
-    // 2) Add option to options struct to switch between two methods for
-    //    computing fields
-	std::complex<double> *P = Simulation_GetCachedField((const Simulation *)S, (const Layer *)L);
-    // TODO: need to get the real space epsilon values at this point using the
-    // Layer struct and pass them into this function
-    const double xy[2] = {r[0], r[1]};
-    const Material *M;
-    int shape_index;
-    int result  = Pattern_GetShape(&(L->pattern), xy, &shape_index, NULL);
-    if (result == 0) {
-        printf("Found shape containing this point!!\n");
-        printf("Shape index: %d\n", shape_index);
-        printf("Material Index: %d\n", L->pattern.shapes[shape_index].tag);
-        M = Simulation_GetMaterialByIndex(S, L->pattern.shapes[shape_index].tag);
-    } else {
-        printf("No shape containing this point, using background\n");
-        M = Simulation_GetMaterialByName(S, L->material, NULL);
-    }
-    printf("Material Name: %s\n", M->name);
-    // If M.type = 0 then epsilon is a scalar, if M.type = 1 epsilon is a
-    // tensor. IDK what to do with a tensor epsilon
-    if(0 != M->type){
-        return -1;
-    }
-    std::complex<double> epsilon(M->eps.s[0], M->eps.s[1]);    
-    // Now that I had the shape, I need to figure out what material it contains
-    printf("Epsilon = %f + I*%f\n", epsilon.real(), epsilon.imag());
     if(S->options.use_weismann_formulation > 0) {
-        printf("\nUsing Weismann Formulation!!\n");
+        // I need to jump in right here and do a few thing
+        std::complex<double> *P = Simulation_GetCachedField((const S4_Simulation *)S, (const S4_Layer *)L);
+        std::complex<double> *W = Simulation_GetCachedW((const S4_Simulation *)S, (const S4_Layer *)L);
+        const double xy[2] = {r[0], r[1]};
+        const Material *M;
+        int shape_index;
+        int result  = Pattern_GetShape(&(L->pattern), xy, &shape_index, NULL);
+        if (result == 0) {
+            M = Simulation_GetMaterialByIndex(S, L->pattern.shapes[shape_index].tag);
+        } else {
+            M = Simulation_GetMaterialByName(S, L->material, NULL);
+        }
+        // If M.type = 0 then epsilon is a scalar, if M.type = 1 epsilon is a
+        // tensor. IDK what to do with a tensor epsilon
+        if(0 != M->type){
+            return -1;
+        }
+        std::complex<double> epsilon(M->eps.s[0], M->eps.s[1]);
+        // Now that I had the shape, I need to figure out what material it contains
+        S4_VERB(1, "Using Weismann Formulation");
         GetFieldAtPointImproved(
             S->n_G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
-            Lbands->q, Lbands->kp, Lbands->phi, Lbands->Epsilon_inv, P, Lbands->Epsilon2, epsilon, Lbands->epstype,
+            Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, P, Lmodes->Epsilon2, epsilon, Lmodes->epstype,
             ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
     } else {
         GetFieldAtPoint(
             S->n_G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
-            Lbands->q, Lbands->kp, Lbands->phi, Lbands->Epsilon_inv, Lbands->epstype,
+            Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
             ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
     }
 	if(NULL != fE){
@@ -3468,6 +3454,10 @@ void Simulation_InvalidateFieldCache(S4_Simulation *S){
 	while(NULL != S->field_cache){
 		FieldCache *t = S->field_cache;
 		S->field_cache = S->field_cache->next;
+		// I allocated a seperate block of memory for W because I didn't want
+        // to deal with heinous pointer arithmetic, so we need to free this
+        // memory seperately as well.
+        S4_free(t->W);
 		// The P pointer is just t+1, so don't S4_free it!
 		S4_free(t);
 	}
@@ -3478,9 +3468,7 @@ std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4
 	S4_TRACE("> Simulation_GetCachedField(S=%p, layer=%p) [omega=%f]\n", S, layer, S->omega[0]);
 	std::complex<double> *P = NULL;
 	FieldCache *f = S->field_cache;
-    printf("Given Layer = %s\n", layer->name);
 	while(NULL != f){
-        printf("Other layer = %s\n", f->layer->name);
 		if(layer == f->layer && S->n_G == f->n){
 			P = f->P;
 			break;
@@ -3490,11 +3478,30 @@ std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4
 	S4_TRACE("< Simulation_GetCachedField returning P = %p [omega=%f]\n", P, S->omega[0]);
 	return P;
 }
-void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen){
-	S4_TRACE("> Simulation_AddFieldToCache(S=%p, layer=%p, n=%d, P=%p) [omega=%f]\n", S, layer, (int)n, P, S->omega[0]);
+
+std::complex<double>* Simulation_GetCachedW(const S4_Simulation *S, const S4_Layer *layer){
+	S4_TRACE("> Simulation_GetCachedW(S=%p, layer=%p) [omega=%f]\n", S, layer, S->omega[0]);
+	std::complex<double> *W = NULL;
+	FieldCache *f = S->field_cache;
+	while(NULL != f){
+		if(layer == f->layer && S->n_G == f->n){
+			W = f->W;
+			break;
+		}
+		f = f->next;
+	}
+	S4_TRACE("< Simulation_GetCachedW returning W = %p [omega=%f]\n", W, S->omega[0]);
+	return W;
+}
+void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
+                                const std::complex<double> *W, size_t Wlen){
+	S4_TRACE("> Simulation_AddFieldToCache(S=%p, layer=%p, n=%d, P=%p) [omega=%f]\n", S, layer, n, P, S->omega[0]);
+	/* FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache)+sizeof(std::complex<double>)*Plen+sizeof(std::complex<double>)*Wlen); */
 	FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache)+sizeof(std::complex<double>)*Plen);
 	f->P = (std::complex<double>*)(f+1);
 	memcpy(f->P, P, sizeof(std::complex<double>)*Plen);
+    f->W = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*Wlen);
+	memcpy(f->W, W, sizeof(std::complex<double>)*Wlen);
 	f->layer = layer;
 	f->n = n;
 	f->next = S->field_cache;

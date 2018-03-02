@@ -78,7 +78,7 @@
 #OBJDIR = ./build
 #S4_BINNAME = $(OBJDIR)/S4
 #S4_LIBNAME = $(OBJDIR)/libS4.a
-#S4r_LIBNAME = $(OBJDIR)/libS4r.a
+S4r_LIBNAME = $(OBJDIR)/libS4r.a
 
 ##################### DO NOT EDIT BELOW THIS LINE #####################
 
@@ -88,11 +88,23 @@
 
 #ifeq ($(S4_DEBUG), 1)
 #CPPFLAGS += -DENABLE_S4_TRACE
+#CPPFLAGS += -ggdb
 #endif
-#
+
 #ifeq ($(S4_DEBUG), 2)
 #CPPFLAGS += -DENABLE_S4_TRACE
 #CPPFLAGS += -DDUMP_MATRICES
+#CPPFLAGS += -ggdb
+#endif
+
+#ifeq ($(S4_DEBUG), 3)
+#CPPFLAGS += -DENABLE_S4_TRACE
+#CPPFLAGS += -DDUMP_MATRICES
+#CPPFLAGS += -DDUMP_MATRICES_LARGE
+#CPPFLAGS += -ggdb
+
+#ifdef FFTW3_LIB
+#CPPFLAGS += -DHAVE_FFTW3 $(FFTW3_INC)
 #endif
 
 #ifeq ($(S4_DEBUG), 3)
