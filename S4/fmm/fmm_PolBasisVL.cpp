@@ -409,6 +409,11 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
     // diagonal of mDelta. Recall Delta = epsilon - eta^-1 so
     // -Delta = eta^-1 - epsilon. This seems to make sense because in the loop
     // we then subtract epsilon from mDelta
+    // This is equivalent to backslash operator in MATLAB, which is different
+    // from taking the inverse and multiplying. Can be faster and better
+    // conditioned numerically with the same result
+    // Basically taking the inverse by passing the identity into the fifth
+    // argument and then sticking it into mDelta
 	RNP::LinearSolve<'N'>(n,n, Eta,n, mDelta,n, NULL, NULL);
 	for(int i = 0; i < n; ++i){
         // alpha = -1

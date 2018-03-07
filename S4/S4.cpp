@@ -3020,14 +3020,78 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
 	RNP::TBLAS::Copy(n4, Lsoln,1, ab,1);
 	//RNP::IO::PrintVector(n4, ab, 1);
 	TranslateAmplitudes(S->n_G, Lmodes->q, L->thickness, dz, ab);
-	size_t snxy[2] = { (size_t)nxy[0], (size_t)nxy[1] };
-	GetFieldOnGrid(
-		S->n_G, S->G, S->kx, S->ky, std::complex<double>(S->omega[0],S->omega[1]),
-		Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
-		ab, snxy, NULL,
-		reinterpret_cast<std::complex<double>*>(E),
-		reinterpret_cast<std::complex<double>*>(H)
-	);
+	size_t snxy[2] = { nxy[0], nxy[1] };
+    if(S->options.use_weismann_formulation > 0) {
+        std::complex<double> *P = Simulation_GetCachedField((const S4_Simulation *)S, (const S4_Layer *)L);
+        std::complex<double> *W = Simulation_GetCachedW((const S4_Simulation *)S, (const S4_Layer *)L);
+        // TODO: Need to build out an array of epsilon values at each each grid
+        // point, and pass this array into GetFieldOnGridImproved so it can be
+        // indexed into when computing real space reconstructions of E from
+        // Dnormal. I think it makes sense to do it out here instead of passing
+        // the whole Simulation struct and Layer structs into GetField and
+        // essentially implementing the same logic we would out here in there.
+        // Also, there are only a handful of unique values of epsilon (one for
+        // each shape). However, we would have to compute which indices
+        // correspond to which value and pass that into GetField anyway, so
+        // might as well just precompute the whole array. We could make an
+        // array of only unique values, then another array (of size = number of
+        // sampling points) that is filled with pointers to the correct element
+        // of the array containing the unique epsilon values to save space.
+        size_t ns = nxy[0]*nxy[1];
+        std::complex<double> *epsilon = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*ns);
+        S4_Material *M;
+        int shape_index;
+        double du = hypot(S->Lr[0], S->Lr[1])/nxy[0];
+        double dv = hypot(S->Lr[2], S->Lr[3])/nxy[1];
+        for (int iv = 0; iv < nxy[1]; ++iv){
+            for (int iu = 0; iu < nxy[0]; ++iu){
+                double r[2] = {iu*du, iv*dv};
+                // double ruv[2] = {
+                //     -0.5 + ((double)iu+0.5)/(double)nxy[0],
+                //     -0.5 + ((double)iv+0.5)/(double)nxy[1] };
+                // double r[2] = {
+                //     ruv[0] * S->Lr[0] + ruv[1] * S->Lr[2],
+                //     ruv[0] * S->Lr[1] + ruv[1] * S->Lr[3] };
+                int result  = Pattern_GetShape(&(L->pattern), r, &shape_index, NULL);
+                if (result == 0) {
+                    M = Simulation_GetMaterialByIndex(S, L->pattern.shapes[shape_index].tag);
+                } else {
+                    M = Simulation_GetMaterialByName(S, L->material, NULL);
+                }
+                // If M.type = 0 then epsilon is a scalar, if M.type = 1 epsilon is a
+                // tensor. IDK what to do with a tensor epsilon
+                if(0 != M->type){
+                    return -1;
+                }
+                std::complex<double> eps_val(M->eps.s[0], M->eps.s[1]);
+                epsilon[iu+iv*nxy[0]] = eps_val;
+            }
+        }
+        S4_VERB(1, "Using Weismann Formulation\n");
+        GetFieldOnGridImproved(
+            S->n_G, S->solution->G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
+            Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, P, W, epsilon, Lmodes->epstype,
+            ab, snxy,
+            reinterpret_cast<std::complex<double>*>(E),
+            reinterpret_cast<std::complex<double>*>(H)
+        );
+        // GetFieldOnGrid(
+        //     S->n_G, S->solution->G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
+        //     Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
+        //     ab, snxy,
+        //     reinterpret_cast<std::complex<double>*>(E),
+        //     reinterpret_cast<std::complex<double>*>(H)
+        // );
+        S4_free(epsilon);
+    } else {
+        GetFieldOnGrid(
+            S->n_G, S->solution->G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
+            Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
+            ab, snxy,
+            reinterpret_cast<std::complex<double>*>(E),
+            reinterpret_cast<std::complex<double>*>(H)
+        );
+    }
 	S4_free(ab);
 
 	S4_TRACE("< Simulation_GetFieldPlane\n");

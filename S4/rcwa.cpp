@@ -2173,8 +2173,8 @@ void GetFieldAtPointImproved(
 	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
 	const std::complex<double> *phi, // size (2*glist.n)^2
 	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL. This is \hat{\eta} in paper notation
-	const std::complex<double> *P, // Projection operator. 2nx2n matrix, size 4n^2
-	const std::complex<double> *W, // Projection operator. 2nx2n matrix, size 4n^2
+	const std::complex<double> *P, // Projection operator onto tangential. 2nx2n matrix, size 4n^2
+	const std::complex<double> *W, // Weismann operator. 2nx2n matrix, size 4n^2
 	const std::complex<double> *Epsilon2, // curly Epsilon2 matrix (see eqn 51)
 	const std::complex<double> epsilon, // The scalar, real space value of epsilon
 	int epstype,
@@ -2252,7 +2252,7 @@ void GetFieldAtPointImproved(
 	fH[2] = 0;
 
     // So the equations look like this:
-    // [-d_{n,y} d_{n,x}] = \hat{N} Epsilon2 [-ey ex]
+    // [-d_{n,y} d_{n,x}] = W [-ey ex]
     // \hat{N} = I - P
     // [-e_{t,y} e_{t,x}] = P [-ey, ex]
     // Remeber P is NULL for unpatterned layers, and we don't need to use this
@@ -2323,9 +2323,7 @@ void GetFieldAtPointImproved(
         fH[1] += hy[i]*phase;
         if(NULL != P){
             fE[0] += dnx[i]*(phase/epsilon) + etx[i]*phase;
-            /* fE[0] += etx[i]*phase; */
             fE[1] -= ndny[i]*(phase/epsilon) + nety[i]*phase;
-            /*fE[1] -= nety[i]*phase;*/
         } else {
             fE[0] += ex[i]*phase;
             fE[1] -= ney[i]*phase;
@@ -2358,7 +2356,7 @@ void GetFieldAtPointImproved(
     }
 }
 
-void GetFieldOnGrid(
+void GetFieldOnGridImproved(
 	size_t n, // glist.n
 	int *G,
 	const double *kx, const double *ky,
@@ -2367,6 +2365,9 @@ void GetFieldOnGrid(
 	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
 	const std::complex<double> *phi, // size (2*glist.n)^2
 	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL || kp == NULL
+	const std::complex<double> *P, // Projection operator onto tangential. 2nx2n matrix, size 4n^2
+	const std::complex<double> *W, // Weismann operator. 2nx2n matrix, size 4n^2
+	const std::complex<double> *epsilon, // The scalar, real space value of epsilon
 	int epstype,
 	const std::complex<double> *ab, // length 4*glist.n
 	const size_t nxy[2], // number of points per lattice direction
@@ -2379,6 +2380,7 @@ void GetFieldOnGrid(
 	const size_t n2 = 2*n;
     // Total # of real space sampling points
 	const size_t N = nxy[0]*nxy[1];
+    // Center of grid in real space
 	const int nxyoff[2] = { (int)(nxy[0]/2), (int)(nxy[1]/2) };
 	int inxy[2] = { (int)nxy[0], (int)nxy[1] };
 	int inxy_rev[2] = { (int)nxy[1], (int)nxy[0] };
@@ -2398,6 +2400,172 @@ void GetFieldOnGrid(
     // The two arrays below are arrays of pointers. This means each element in
     // from/to is a pointer to an entirely new memory space that is allocated
     // by the fft_alloc_complex function
+	std::complex<double> *from[8];
+	std::complex<double> *to[8];
+	fft_plan plan[8];
+	for(unsigned i = 0; i < 8; ++i){
+		from[i] = fft_alloc_complex(N);
+		to[i] = fft_alloc_complex(N);
+		memset(from[i], 0, sizeof(std::complex<double>) * N);
+        // This is just a function that allocates a struct that "plans" or
+        // configures the Fourier transform. Mainly astruct containing the
+        // pointers to memory space containing real space data (from) and
+        // pointer to the memory space for the results (to)
+		plan[i] = fft_plan_dft_2d(inxy_rev, from[i], to[i], 1);
+	}
+
+    // This is setting up the left side of equation 11 of the paper and
+    // storing in the first N elements of the eh array
+	for(size_t i = 0; i < n; ++i){
+		eh[i] = (ky[i]*hx[i] - kx[i]*hy[i]);
+	}
+    // This multiplies epsilon_inv by eh[0:N] and copies it into the
+    // memory space of eh[N:2N]. Looking at equation 11 of the paper, you
+    // can see after setting up the left size we still need to multiply it
+    // by \hat{\epsilon}_z^-1. We haven't divided by omega yet, for some
+    // reason that is done in the next loop. I think we could do it by
+    // replaceing epsilon_inv[0] in the Scale call by epsilon_inv[0]/omega
+    // and z_one by 1/omega in the MultMV call. Perhaps there is a reason
+    // the author didn't do it this way
+    if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+        RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
+        RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
+    }else{
+        RNP::TBLAS::MultMV<'N'>(n,n, z_one,epsilon_inv,n, eh,1, z_zero,&eh[n],1);
+    }
+
+    // So the equations look like this:
+    // [-d_{n,y} d_{n,x}] = W [-ey ex]
+    // \hat{N} = I - P
+    // [-e_{t,y} e_{t,x}] = P [-ey, ex]
+    // Remeber P is NULL for unpatterned layers, and we don't need to use this
+    // procedure for unpatterned layers anyway!
+    std::complex<double> *dn_and_et = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 2*n2);
+    // These are just some convenience pointers to the various sections of
+    // the dn and et array
+    const std::complex<double> *ndny = &dn_and_et[0];
+    const std::complex<double> *dnx = &dn_and_et[n];
+    const std::complex<double> *nety = &dn_and_et[n2];
+    const std::complex<double> *etx = &dn_and_et[n2+n];
+    if(NULL != W){
+        // We now have all we need to get the Fourier coefficients of the
+        // normal component of d and the tangential components of e. I
+        // allocated a new array for the dnormal components and etangential
+        // components. dnormal will be in the first 2N elements, etangential in
+        // the last 2N elements
+        // First dnormal
+        // This is my approach
+        /* RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,N,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1); */
+        // This is Weismann's approach verbatim
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,W,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Dnormal:" << std::endl;
+        RNP::IO::PrintVector(n2,dn_and_et,1,DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Now etangential
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,P,n2,&eh[4*n2],1, z_zero,&dn_and_et[n2],1);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Etangential:" << std::endl;
+        RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;
+#endif
+    }
+
+    // Here is where we populate the matrices of fourier coefficients that we
+    // are then going to DFT
+	for(size_t i = 0; i < n; ++i){
+        // G just contains indices for the two components of the G vectors. A
+        // pair of these indices defines a point in k-space, and the indices in
+        // this pair are stored adjacent to one another in the G array. So
+        // these are basically just (m, n). The indices run from -Nmax/2 to
+        // Nmax/2 where Nmax is the radius in k-space you get after circular
+        // truncation.
+		const int iu = G[2*i+0];
+		const int iv = G[2*i+1];
+        // This if block has to do with the shifting of the origin. Is it at
+        // the corner or the center of the unit cell?
+		if(
+			(nxyoff[0] - (int)nxy[0] < iu && iu <= nxyoff[0]) &&
+			(nxyoff[1] - (int)nxy[1] < iv && iv <= nxyoff[1])
+		){
+
+			const int ii = (iu >= 0 ? iu : iu + nxy[0]);
+			const int jj = (iv >= 0 ? iv : iv + nxy[1]);
+            // I think I need to jump in here, and just populate from[3] with
+            // the fourier coefficients of Dnormal,x and Etangential,x  and
+            // from[4] with the y components
+            // Dnormal_{x,y} inside from[3],from[4] and Etangential_{x,y}
+            // inside from[6],from[7]
+			from[0][ii+jj*nxy[0]] = hx[i];
+			from[1][ii+jj*nxy[0]] = hy[i];
+			from[2][ii+jj*nxy[0]] = (kx[i] * ney[i] + ky[i] * ex[i]) / omega;
+			from[3][ii+jj*nxy[0]] = dnx[i];
+			from[4][ii+jj*nxy[0]] = -ndny[i];
+			from[5][ii+jj*nxy[0]] = eh[n+i] / omega;
+			from[6][ii+jj*nxy[0]] = etx[i];
+			from[7][ii+jj*nxy[0]] = -nety[i];
+		}
+	}
+
+	for(unsigned i = 0; i < 8; ++i){
+		fft_plan_exec(plan[i]);
+	}
+
+	for(size_t j = 0; j < nxy[1]; ++j){
+		for(size_t i = 0; i < nxy[0]; ++i){
+            // This is the real space reconstruction
+			hfield[3*(i+j*nxy[0])+0] = to[0][i+j*nxy[0]];
+			hfield[3*(i+j*nxy[0])+1] = to[1][i+j*nxy[0]];
+			hfield[3*(i+j*nxy[0])+2] = to[2][i+j*nxy[0]];
+            // x component
+			efield[3*(i+j*nxy[0])+0] = to[3][i+j*nxy[0]]/epsilon[i+j*nxy[0]] + to[6][i+j*nxy[0]];
+            // y component
+			efield[3*(i+j*nxy[0])+1] = to[4][i+j*nxy[0]]/epsilon[i+j*nxy[0]] + to[7][i+j*nxy[0]];;
+            // z component
+			efield[3*(i+j*nxy[0])+2] = to[5][i+j*nxy[0]];
+		}
+	}
+
+	for(unsigned i = 0; i < 8; ++i){
+		fft_plan_destroy(plan[i]);
+		fft_free(to[i]);
+		fft_free(from[i]);
+	}
+	rcwa_free(eh);
+}
+
+void GetFieldOnGrid(
+	size_t n, // glist.n
+	int *G,
+	const double *kx, const double *ky,
+	std::complex<double> omega,
+	const std::complex<double> *q, // length 2*glist.n
+	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	const std::complex<double> *phi, // size (2*glist.n)^2
+	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL || kp == NULL
+	int epstype,
+	const std::complex<double> *ab, // length 4*glist.n
+	const size_t nxy[2], // number of points per lattice direction
+	std::complex<double> *efield,
+	std::complex<double> *hfield
+){
+	const std::complex<double> z_zero(0.);
+	const std::complex<double> z_one(1.);
+	const size_t n2 = 2*n;
+    // Total # of real space sampling points
+	const size_t N = nxy[0]*nxy[1];
+    // Center of grid
+	const int nxyoff[2] = { (int)(nxy[0]/2), (int)(nxy[1]/2) };
+	int inxy[2] = { (int)nxy[0], (int)nxy[1] };
+	int inxy_rev[2] = { (int)nxy[1], (int)nxy[0] };
+
+	std::complex<double> *eh = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 8*n2);
+
+	GetInPlaneFieldVector(n, kx, ky, omega, q, epsilon_inv, epstype, kp, phi, ab, eh);
+	const std::complex<double> *hx  = &eh[3*n2+0];
+	const std::complex<double> *hy  = &eh[3*n2+n];
+	const std::complex<double> *ney = &eh[4*n2+0];
+	const std::complex<double> *ex  = &eh[4*n2+n];
+
 	std::complex<double> *from[6];
 	std::complex<double> *to[6];
 	fft_plan plan[6];

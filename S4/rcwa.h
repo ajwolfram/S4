@@ -499,6 +499,24 @@ void GetFieldAtPointImproved(
 	std::complex<double> hfield[3],
 	std::complex<double> *work = NULL
 );
+void GetFieldOnGridImproved(
+	size_t n, // glist.n
+	int *G, // length 2*glist.n, pairs of uv coordinates of Lk
+	const double *kx, const double *ky,
+	std::complex<double> omega,
+	const std::complex<double> *q, // length 2*glist.n
+	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	const std::complex<double> *phi, // size (2*glist.n)^2
+	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL || kp == NULL
+	const std::complex<double> *P, // Projection operator onto tangential. 2nx2n matrix, size 4n^2
+	const std::complex<double> *W, // Weismann operator. 2nx2n matrix, size 4n^2
+	const std::complex<double> *epsilon, // The scalar, real space value of epsilon
+	int epstype,
+	const std::complex<double> *ab, // length 4*glist.n
+	const size_t nxy[2], // number of points per lattice direction
+	std::complex<double> *efield,
+	std::complex<double> *hfield
+);
 void GetFieldOnGrid(
 	size_t n, // glist.n
 	int *G, // length 2*glist.n, pairs of uv coordinates of Lk

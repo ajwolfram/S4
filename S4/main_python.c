@@ -1496,10 +1496,10 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 		for(k = 0; k < 2; ++k){
 			PyObject *pk = PyTuple_New(nxy[0]);
 			PyTuple_SetItem(rv, k, pk);
-			for(i = 0; i < nxy[0]; ++i){
+            for(i = 0; i < nxy[0]; ++i){
 				PyObject *pi = PyTuple_New(nxy[1]);
 				PyTuple_SetItem(pk, i, pi);
-				for(j = 0; j < nxy[1]; ++j){
+                for(j = 0; j < nxy[1]; ++j){
 					PyObject *pj = PyTuple_New(3);
 					PyTuple_SetItem(pi, j, pj);
 					for(i3 = 0; i3 < 3; ++i3){
