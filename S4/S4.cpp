@@ -3463,9 +3463,9 @@ int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], doubl
     std::complex<double> epsilon = 0;
     if(S->options.use_weismann_formulation > 0) {
         // I need to jump in right here and do a few thing
-        std::complex<double> *P = Simulation_GetCachedField((const S4_Simulation*)S, (const S4_Layer *)L);
-        std::complex<double> *W = Simulation_GetCachedW((const S4_Simulation*)S, (const S4_Layer *)L);
-        printf("S4_Layer = %s\n", L->name);
+        std::complex<double> *P = Simulation_GetCachedField((const Simulation *)S, (const Layer *)L);
+        std::complex<double> *W = Simulation_GetCachedW((const Simulation *)S, (const Layer *)L);
+        printf("Layer = %s\n", L->name);
         printf("P = %p\n", P);
         printf("W = %p\n", W);
         const double xy[2] = {r[0], r[1]};
