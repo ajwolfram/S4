@@ -48,9 +48,14 @@
 #define Bool unsigned char
 #endif
 
+
 void fft_init(void);
 void fft_destroy(void);
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 static int CheckPyNumber(PyObject *obj){
 	return PyFloat_Check(obj) || PyLong_Check(obj)
@@ -114,8 +119,8 @@ void HandleSolutionErrorCode(const char *fname, int code){
 	static const char* errstr[] = {
 		def, /* 0 */
 		"A memory allocation error occurred", /* 1 */
-		def, /* 2 */
-		def, /* 3 */
+		"Invalid file extension for solution file. Must be one of ['txt', 'xml', 'bin']", /* 2 */
+		"Unable to open file stream", /* 3 */
 		def, /* 4 */
 		def, /* 5 */
 		def, /* 6 */
@@ -648,6 +653,31 @@ static PyObject *S4Sim_Clone(S4Sim *self, PyObject *args){
 		cpy->S = S4_Simulation_Clone(self->S);
 	}
 	return (PyObject*)cpy;
+}
+static PyObject *S4Sim_LoadSolution(S4Sim *self, PyObject *args, PyObject *kwds){
+    printf("Inside S4Sim_LoadSolution\n");
+	static char *kwlist[] = { "Filename", NULL };
+	const char *fname;
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "s:LoadSolution", kwlist, &fname)){ return NULL; }
+    printf("Parsed args!\n");
+    int err;
+    err = Simulation_LoadSolution(&(self->S), fname);
+    // if (err != 0){
+    //     HandleSolutionErrorCode("Simulation_LoadSolution", err);
+    // }
+	Py_RETURN_NONE;
+}
+
+static PyObject *S4Sim_SaveSolution(S4Sim *self, PyObject *args, PyObject *kwds){
+	static char *kwlist[] = { "Filename", NULL };
+	const char *fname;
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "s:SaveSolution", kwlist, &fname)){ return NULL; }
+    int err;
+    err = Simulation_SaveSolution(&(self->S), fname);
+    if (err != 0){
+        HandleSolutionErrorCode("Simulation_SaveSolution", err);
+    }
+	Py_RETURN_NONE;
 }
 
 static PyObject *S4Sim_ConvertUnits(S4Sim *self, PyObject *args)
@@ -1624,7 +1654,11 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 	}
 
     if(NULL != basisfieldprefix){
-        self->S.options.vector_field_dump_filename_prefix = basisfieldprefix;
+        const size_t prefix_len = strlen(basisfieldprefix);
+        char *prefix = (char*)malloc(sizeof(char) * (prefix_len + 1));
+        strcpy(prefix, basisfieldprefix);
+        self->S.options.vector_field_dump_filename_prefix = prefix;
+        // self->S.options.vector_field_dump_filename_prefix = basisfieldprefix;
     }
 
 	if(NULL != polarization_basis){
@@ -1800,6 +1834,8 @@ static PyMethodDef S4Sim_methods[] = {
 	{"SetMaterial"				, (PyCFunction)S4Sim_SetMaterial, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SetMaterial(name,eps) -> None")},
 	{"AddLayer"					, (PyCFunction)S4Sim_AddLayer, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("AddLayer(name,thickness,matname) -> None")},
 	{"AddLayerCopy"				, (PyCFunction)S4Sim_AddLayerCopy, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("AddLayerCopy(name,thickness,layer) -> None")},
+	{"SaveSolution"				, (PyCFunction)S4Sim_SaveSolution, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SaveSolution(filename) -> None")},
+	{"LoadSolution"				, (PyCFunction)S4Sim_LoadSolution, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("LoadSolution(filename) -> None")},
 	{"SetLayer"					, (PyCFunction)S4Sim_SetLayer, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SetLayer(name,thickness,material) -> None")},
 	{"SetLayerThickness"		, (PyCFunction)S4Sim_SetLayerThickness, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SetLayerThickness(layer,thickness) -> None")},
 	{"SetVerbosity"				, (PyCFunction)S4Sim_SetVerbosity, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SetVerbosity(level) -> None")},
@@ -2069,3 +2105,7 @@ PyMODINIT_FUNC initS4(void)
 	return m;
 #endif
 }
+
+#ifdef __cplusplus
+}
+#endif

@@ -2,9 +2,21 @@
 
 OBJDIR="$1"
 LIBFILE="$2"
+LIBS="$3"
+
+echo "LIBFILE: $LIBFILE"
 
 cat <<SETUPPY > setup.py
 from distutils.core import setup, Extension
+#import os
+#os.environ["CC"] = "g++"
+#os.environ["CXX"] = "g++"
+
+libs = ['S4', 'stdc++']
+lib_dirs = ['$OBJDIR', 'S4/lib']
+libs.extend([lib[2::] for lib in '$LIBS'.split()])
+include_dirs = ['S4/include']
+extra_link_args = ['$LIBFILE']
 
 S4module = Extension('S4',
 	sources = [
@@ -18,6 +30,12 @@ S4module = Extension('S4',
 	extra_link_args = [
 		'$LIBFILE'
 	]
+	sources = ['S4/main_python.c'],
+	libraries = libs,
+	library_dirs = lib_dirs,
+    include_dirs = include_dirs,
+	extra_link_args = extra_link_args,
+	extra_compile_args=['-std=gnu99']
 )
 
 setup(name = 'S4',

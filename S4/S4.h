@@ -134,6 +134,11 @@ S4_message_handler S4_Simulation_SetMessageHandler(
 
 unsigned int S4_Lattice_Count(const S4_real *Lr, unsigned int nG);
 int S4_Lattice_Reciprocate(const S4_real *Lr, S4_real *Lk);
+// Destroys the solution belonging to a given simulation and sets
+// S->solution to NULL.
+void Simulation_DestroySolution(S4_Simulation *S);
+void Simulation_DestroyLayerSolutions(S4_Simulation *S);
+
 
 /**********************************/
 /* Simulation getters and setters */
@@ -228,11 +233,16 @@ int S4_Simulation_ExcitationDipole(S4_Simulation *S, const double k[2], const ch
 // Internal functions
 #ifdef __cplusplus
 // Field cache manipulation
-void Simulation_InvalidateFieldCache(Simulation *S);
-std::complex<double>* Simulation_GetCachedField(const Simulation *S, const Layer *layer);
-std::complex<double>* Simulation_GetCachedW(const Simulation *S, const Layer *layer);
-void Simulation_AddFieldToCache(Simulation *S, const Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
+void Simulation_InvalidateFieldCache(S4_Simulation *S);
+std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4_Layer *layer);
+std::complex<double>* Simulation_GetCachedW(const S4_Simulation *S, const S4_Layer *layer);
+void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
                                 const std::complex<double> *W, size_t Wlen);
+// Serializes the Solution struct and saves it to disk using Boost serialize
+// functionality
+int Simulation_SaveSolution(const S4_Simulation *S, const char*);
+// Loads the serialized solution from disk using Boost serialize
+int Simulation_LoadSolution(S4_Simulation *S, const char*);
 #endif
 /***********************************/
 /* Solution hint related functions */
