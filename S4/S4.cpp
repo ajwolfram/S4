@@ -353,6 +353,85 @@ struct FieldCache{
 	FieldCache *next;
 };
 
+BOOST_SERIALIZATION_SPLIT_FREE(FieldCache)
+template<class Archive>
+void save(Archive &ar, const FieldCache &f, const unsigned int version)
+{
+    int P_is_null;
+    int nn4 = 4*f.n*f.n;
+    if(f.P == NULL){
+        P_is_null = 1;
+    } else {
+        P_is_null = 0;
+    }
+    int W_is_null;
+    if(f.W == NULL){
+        W_is_null = 1;
+    } else {
+        W_is_null = 0;
+    }
+    ar & bs::make_nvp("P_is_null", P_is_null);
+    ar & bs::make_nvp("W_is_null", W_is_null);
+    ar & bs::make_nvp("n", f.n);
+    int name_len = strlen(f.layer);
+    ar & bs::make_nvp("name_len", name_len);
+    ar & bs::make_nvp("layer", bs::make_array(f.layer, name_len));
+    if(f.P != NULL){
+        ar & bs::make_nvp("P", bs::make_array(f.P, nn4));
+    }
+    if(f.W != NULL){
+        ar & bs::make_nvp("W", bs::make_array(f.W, nn4));
+    }
+    int next_is_null;
+    if(f.next == NULL){
+        next_is_null = 1;
+        ar & bs::make_nvp("next_is_null", next_is_null);
+    } else {
+        next_is_null = 0;
+        ar & bs::make_nvp("next_is_null", next_is_null);
+        ar & bs::make_nvp("next", *f.next);
+    }
+};
+
+template<class Archive>
+void load(Archive &ar, FieldCache &f, const unsigned int version)
+{
+    int P_is_null;
+    int W_is_null;
+    ar & bs::make_nvp("P_is_null", P_is_null);
+    ar & bs::make_nvp("W_is_null", W_is_null);
+    S4_TRACE("FieldCache.load: P_is_null = %d\n", P_is_null);
+    S4_TRACE("FieldCache.load: W_is_null = %d\n", W_is_null);
+    ar & bs::make_nvp("n", f.n);
+    S4_TRACE("FieldCache.load: f.n = %d\n", f.n);
+    int name_len;
+    ar & bs::make_nvp("name_len", name_len);
+    S4_TRACE("FieldCache.load: name_len = %d\n", name_len);
+    f.layer = (char*)S4_malloc(sizeof(char)*name_len);
+    ar & bs::make_nvp("layer", bs::make_array(f.layer, name_len));
+    int nn4 = 4*f.n*f.n;
+    if(P_is_null == 0){
+        f.P = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*nn4);
+        ar & bs::make_nvp("P", bs::make_array(f.P, nn4));
+    } else {
+        f.P = NULL;
+    }
+    if(W_is_null == 0){
+        f.W = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*nn4);
+        ar & bs::make_nvp("W", bs::make_array(f.W, nn4));
+    } else {
+        f.W = NULL;
+    }
+    int next_is_null;
+    ar & bs::make_nvp("next_is_null", next_is_null);
+    if(next_is_null == 1){
+        f.next = NULL;
+    } else {
+        f.next = (FieldCache*)S4_malloc(sizeof(FieldCache));
+        ar & bs::make_nvp("next", *f.next);
+    }
+};
+
 // Private functions
 
 // If layer_solution is null, only computes layer_modes if it is non-NULL.
@@ -684,6 +763,7 @@ int Simulation_SaveSolution(const S4_Simulation*S, const char *fname){
     // }
     // S4_TRACE("\n");
     Solution *soln = S->solution;
+    FieldCache *fcache = S->field_cache;
     LayerBands** Lbands = (LayerBands**)soln->layer_bands;
     LayerSolution** Lsoln = (LayerSolution**)soln->layer_solution;
     soln->n_G = S->n_G;
@@ -702,18 +782,44 @@ int Simulation_SaveSolution(const S4_Simulation*S, const char *fname){
     }
     int len = strlen(fname);
     const char *last_three = &fname[len-3];
+    int fcache_is_null;
     if(strcmp(last_three, "xml") == 0){
         S4_TRACE("xml\n");
         boost::archive::xml_oarchive oa(ofs);
-        oa << bs::make_nvp("Solution", *(soln));
+        oa << bs::make_nvp("Solution", *soln);
+        // don't dereference a potentially NULL pointer
+        if(fcache == NULL){
+            fcache_is_null = 1;
+            oa << bs::make_nvp("FieldCache_is_null", fcache_is_null);
+        } else {
+            fcache_is_null = 0;
+            oa << bs::make_nvp("FieldCache_is_null", fcache_is_null);
+            oa << bs::make_nvp("FieldCache", *fcache);
+        }
     } else if(strcmp(last_three, "txt") == 0) {
         S4_TRACE("txt\n");
         boost::archive::text_oarchive oa(ofs);
-        oa << bs::make_nvp("Solution", *(soln));
+        oa << bs::make_nvp("Solution", *soln);
+        if(fcache == NULL){
+            fcache_is_null = 1;
+            oa << bs::make_nvp("FieldCache_is_null", fcache_is_null);
+        } else {
+            fcache_is_null = 0;
+            oa << bs::make_nvp("FieldCache_is_null", fcache_is_null);
+            oa << bs::make_nvp("FieldCache", *fcache);
+        }
     } else if(strcmp(last_three, "bin") == 0) {
         S4_TRACE("bin\n");
         boost::archive::binary_oarchive oa(ofs);
         oa << bs::make_nvp("Solution", *(soln));
+        if(fcache == NULL){
+            fcache_is_null = 1;
+            oa << bs::make_nvp("FieldCache_is_null", fcache_is_null);
+        } else {
+            fcache_is_null = 0;
+            oa << bs::make_nvp("FieldCache_is_null", fcache_is_null);
+            oa << bs::make_nvp("FieldCache", *fcache);
+        }
     } else {
         S4_TRACE("Bad extension\n");
         return 2;
@@ -779,24 +885,45 @@ int Simulation_LoadSolution(S4_Simulation*S, const char *fname){
     // because that is done inside InitSolution
     // Solution *newsoln = (Solution*)S4_malloc(sizeof(Solution));
     // S->solution = (Solution*)S4_malloc(sizeof(Solution));
+    S->field_cache = (FieldCache*)S4_malloc(sizeof(FieldCache));
     S4_TRACE("Solution after malloc: %p\n", S->solution);
+    int fcache_is_null;
     if(strcmp(last_three, "xml") == 0){
         S4_TRACE("xml\n");
         S4_TRACE("Initializing archive\n");
         boost::archive::xml_iarchive ia(ifs);
         S4_TRACE("Loading from archive\n");
         ia >> bs::make_nvp("Solution", *S->solution);
+        ia >> bs::make_nvp("FieldCache_is_null", fcache_is_null);
+        S4_TRACE("Fieldcache_is_null: %d\n", fcache_is_null);
+        if(fcache_is_null == 1){
+            S->field_cache = NULL;
+        } else {
+            ia >> bs::make_nvp("FieldCache", *S->field_cache);
+        }
         // ia >> bs::make_nvp("Solution", newS->solution);
     } else if(strcmp(last_three, "txt") == 0) {
         S4_TRACE("txt\n");
         boost::archive::text_iarchive ia(ifs);
         ia >> bs::make_nvp("Solution", *S->solution);
-        // ia >> bs::make_nvp("Solution", newS->solution);
+        ia >> bs::make_nvp("FieldCache_is_null", fcache_is_null);
+        S4_TRACE("Fieldcache_is_null: %d\n", fcache_is_null);
+        if(fcache_is_null == 1){
+            S->field_cache = NULL;
+        } else {
+            ia >> bs::make_nvp("FieldCache", *S->field_cache);
+        }
     } else if(strcmp(last_three, "bin") == 0) {
         S4_TRACE("bin\n");
         boost::archive::binary_iarchive ia(ifs);
         ia >> bs::make_nvp("Solution", *S->solution);
-        // ia >> bs::make_nvp("Solution", newS->solution);
+        ia >> bs::make_nvp("FieldCache_is_null", fcache_is_null);
+        S4_TRACE("Fieldcache_is_null: %d\n", fcache_is_null);
+        if(fcache_is_null == 1){
+            S->field_cache = NULL;
+        } else {
+            ia >> bs::make_nvp("FieldCache", *S->field_cache);
+        }
     } else {
         S4_TRACE("Bad extension\n");
         return 2;
@@ -4078,11 +4205,12 @@ void Simulation_InvalidateFieldCache(S4_Simulation *S){
 	while(NULL != S->field_cache){
 		FieldCache *t = S->field_cache;
 		S->field_cache = S->field_cache->next;
-		// I allocated a seperate block of memory for W because I didn't want
-        // to deal with heinous pointer arithmetic, so we need to free this
-        // memory seperately as well.
+        S4_free(t->P);
         S4_free(t->W);
-		// The P pointer is just t+1, so don't S4_free it!
+        // layer actually just stores a character array containing the name of
+        // a layer in it's own memory space, not a pointer to a layer object
+        // So we need to free that memory
+        S4_free(t->layer);
 		S4_free(t);
 	}
 	S->field_cache = NULL;
@@ -4092,8 +4220,11 @@ std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4
 	S4_TRACE("> Simulation_GetCachedField(S=%p, layer=%p) [omega=%f]\n", S, layer, S->omega[0]);
 	std::complex<double> *P = NULL;
 	FieldCache *f = S->field_cache;
+    S4_TRACE("> Simulation_GetCachedField: Input Layer name: %s (%p)\n", layer->name, layer->name);
 	while(NULL != f){
-		if(layer == f->layer && S->n_G == f->n){
+        S4_TRACE("> Simulation_GetCachedField: FieldCache Layer name: %s (%p)\n", f->layer, f->layer);
+		if(strcmp(layer->name, f->layer) == 0 && S->n_G == f->n){
+            S4_TRACE("> Simulation_GetCachedField: Found matching layer!\n");
 			P = f->P;
 			break;
 		}
@@ -4107,8 +4238,11 @@ std::complex<double>* Simulation_GetCachedW(const S4_Simulation *S, const S4_Lay
 	S4_TRACE("> Simulation_GetCachedW(S=%p, layer=%p) [omega=%f]\n", S, layer, S->omega[0]);
 	std::complex<double> *W = NULL;
 	FieldCache *f = S->field_cache;
+    S4_TRACE("> Simulation_GetCachedW: Input Layer name: %s (%p)\n", layer->name, layer->name);
 	while(NULL != f){
-		if(layer == f->layer && S->n_G == f->n){
+        S4_TRACE("> Simulation_GetCachedW: FieldCache Layer name: %s (%p)\n", f->layer, f->layer);
+		if(strcmp(layer->name, f->layer) == 0 && S->n_G == f->n){
+            S4_TRACE("> Simulation_GetCachedW: Found matching layer!\n");
 			W = f->W;
 			break;
 		}
@@ -4121,12 +4255,17 @@ void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t 
                                 const std::complex<double> *W, size_t Wlen){
 	S4_TRACE("> Simulation_AddFieldToCache(S=%p, layer=%p, n=%d, P=%p) [omega=%f]\n", S, layer, n, P, S->omega[0]);
 	/* FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache)+sizeof(std::complex<double>)*Plen+sizeof(std::complex<double>)*Wlen); */
-	FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache)+sizeof(std::complex<double>)*Plen);
-	f->P = (std::complex<double>*)(f+1);
+	FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache));
+	f->P = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*Plen);
 	memcpy(f->P, P, sizeof(std::complex<double>)*Plen);
     f->W = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*Wlen);
 	memcpy(f->W, W, sizeof(std::complex<double>)*Wlen);
-	f->layer = layer;
+    int len = strlen(layer->name);
+    S4_TRACE("> Simulation_AddFieldToCache: Name length =  %d\n", len);
+    f->layer = (char*)S4_malloc(sizeof(char)*len);
+    S4_TRACE("> Simulation_AddFieldToCache: Input Layer name: %s (%p)\n", layer->name, layer->name);
+	strcpy(f->layer, layer->name);
+    S4_TRACE("> Simulation_AddFieldToCache: FieldCache Layer name: %s (%p)\n", f->layer, f->layer);
 	f->n = n;
 	f->next = S->field_cache;
 	S->field_cache = f;
