@@ -655,11 +655,11 @@ static PyObject *S4Sim_Clone(S4Sim *self, PyObject *args){
 	return (PyObject*)cpy;
 }
 static PyObject *S4Sim_LoadSolution(S4Sim *self, PyObject *args, PyObject *kwds){
-    printf("Inside S4Sim_LoadSolution\n");
+    //printf"Inside S4Sim_LoadSolution\n");
 	static char *kwlist[] = { "Filename", NULL };
 	const char *fname;
 	if(!PyArg_ParseTupleAndKeywords(args, kwds, "s:LoadSolution", kwlist, &fname)){ return NULL; }
-    printf("Parsed args!\n");
+    //printf"Parsed args!\n");
     int err;
     err = Simulation_LoadSolution(&(self->S), fname);
     // if (err != 0){

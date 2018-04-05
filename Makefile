@@ -61,9 +61,9 @@
 #MPI_LIB = -L/usr/lib64/openmpi/lib/libmpi.so
 
 # Enable S4_TRACE debugging
-# values of 1, 2, 3 enable debugging, with verbosity increasing at 
+# values of 1, 2, 3 enable debugging, with verbosity increasing as 
 # value increases. 0 to disable
-S4_DEBUG = 1
+S4_DEBUG = 0
 
 
 # Specify custom compilers if needed

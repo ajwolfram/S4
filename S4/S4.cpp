@@ -3592,9 +3592,9 @@ int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], doubl
         // I need to jump in right here and do a few thing
         std::complex<double> *P = Simulation_GetCachedField((const Simulation *)S, (const Layer *)L);
         std::complex<double> *W = Simulation_GetCachedW((const Simulation *)S, (const Layer *)L);
-        printf("Layer = %s\n", L->name);
-        printf("P = %p\n", P);
-        printf("W = %p\n", W);
+        //printf"Layer = %s\n", L->name);
+        //printf"P = %p\n", P);
+        //printf"W = %p\n", W);
         const double xy[2] = {r[0], r[1]};
         const S4_Material *M;
         int shape_index;
@@ -3704,11 +3704,11 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
     std::complex<double> *W = NULL;
     std::complex<double> *epsilon = NULL;
     if(S->options.use_weismann_formulation > 0) {
-        P = Simulation_GetCachedField((const S4_Simulation *)S, (const S4_Layer *)L);
-        W = Simulation_GetCachedW((const S4_Simulation *)S, (const S4_Layer *)L);
-        printf("S4_Layer = %s\n", L->name);
-        printf("P = %p\n", P);
-        printf("W = %p\n", W);
+        P = Simulation_GetCachedField((const Simulation *)S, (const Layer *)L);
+        W = Simulation_GetCachedW((const Simulation *)S, (const Layer *)L);
+//        printf("Layer = %s\n", L->name);
+//        printf("P = %p\n", P);
+//        printf("W = %p\n", W);
         // TODO: Need to build out an array of epsilon values at each each grid
         // point, and pass this array into GetFieldOnGridImproved so it can be
         // indexed into when computing real space reconstructions of E from
