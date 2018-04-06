@@ -315,11 +315,11 @@ struct LayerSolution{
     {
         ar & bs::make_nvp("n_G",n_G);
 
-        int n2 = 2*n_G;
+        int n4 = 4*n_G;
         // for (size_t i = 0; i < n2; i++) {
         //     ar & bs::make_nvp("ab",ab[i]);
         // }
-        ar & bs::make_nvp("ab", bs::make_array(ab, n2));
+        ar & bs::make_nvp("ab", bs::make_array(ab, n4));
     }
 
     template<class Archive>
@@ -327,16 +327,16 @@ struct LayerSolution{
     {
         S4_TRACE("Inside layer soln load\n");
         ar & bs::make_nvp("n_G",n_G);
-        int n2 = 2*n_G;
+        int n4 = 4*n_G;
         // ab = NULL;
         S4_TRACE("Allocating memory for ab\n");
-        ab = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*n2);
+        ab = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*n4);
         S4_TRACE("Allocated memory for ab\n");
 
         // for (size_t i = 0; i < n2; i++) {
         //     ar & bs::make_nvp("ab",ab[i]);
         // }
-        ar & bs::make_nvp("ab", bs::make_array(ab, n2));
+        ar & bs::make_nvp("ab", bs::make_array(ab, n4));
     }
 };
 
