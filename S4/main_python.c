@@ -1523,6 +1523,16 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 		double *F[2] = { Efields, Hfields };
 		PyObject *rv = PyTuple_New(2);
 
+        /* PyArray_ENABLEFLAGS(arr, NPY_ARRAY_OWNDATA); */
+        /* int nd; */
+        /* npy_intp *dims */
+        /* void *data; */
+        /* int nd = 2; */
+        /* npy_intp *dims; */
+        /* dims = snxy */
+        /* arr = PyArray_SimpleNewFromData(nd, dims, typenum, data);` */
+        /* Earr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX128, Efields);` */
+        /* Harr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX128, Hfields);` */
 		for(k = 0; k < 2; ++k){
 			PyObject *pk = PyTuple_New(nxy[0]);
 			PyTuple_SetItem(rv, k, pk);
