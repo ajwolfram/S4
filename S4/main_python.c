@@ -18,6 +18,9 @@
  */
 
 #include "Python.h"
+#include "numpy/arrayobject.h"
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+
 #include "config.h"
 
 #ifdef HAVE_MPI
@@ -176,6 +179,45 @@ struct module_state {
 #define GETSTATE(m) (&_state)
 static struct module_state _state;
 #endif
+
+static PyTypeObject _ArrayDeallocator_Type;
+
+typedef struct {
+    PyObject_HEAD
+    void *memory;
+} _ArrayDeallocator;
+
+static void _ArrayDeallocator_dealloc(_ArrayDeallocator *self)
+{
+    free(self->memory);
+    /* Py_TYPE(self)->ob_type->tp_free((PyObject *)self); */
+	Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyTypeObject _ArrayDeallocator_Type = {
+    PyObject_HEAD_INIT(NULL)
+    0, /*ob_size*/
+    "ArrayDeallocator", /*tp_name*/
+    sizeof(_ArrayDeallocator), /*tp_basicsize*/
+    0, /*tp_itemsize*/
+    _ArrayDeallocator_dealloc, /*tp_dealloc*/
+    0, /*tp_print*/
+    0, /*tp_getattr*/
+    0, /*tp_setattr*/
+    0, /*tp_compare*/
+    0, /*tp_repr*/
+    0, /*tp_as_number*/
+    0, /*tp_as_sequence*/
+    0, /*tp_as_mapping*/
+    0, /*tp_hash */
+    0, /*tp_call*/
+    0, /*tp_str*/
+    0, /*tp_getattro*/
+    0, /*tp_setattro*/
+    0, /*tp_as_buffer*/
+    Py_TPFLAGS_DEFAULT, /*tp_flags*/
+    0, /* tp_doc */
+    };
 
 typedef struct{
 	PyObject_HEAD
@@ -1519,42 +1561,86 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 		free(filename);
 		Py_RETURN_NONE;
 	}else{ /* Array */
-		unsigned k, i3;
-		double *F[2] = { Efields, Hfields };
-		PyObject *rv = PyTuple_New(2);
+		/* unsigned k, i3; */
+		/* double *F[2] = { Efields, Hfields }; */
+		/* PyObject *rv = PyTuple_New(2); */
 
         /* PyArray_ENABLEFLAGS(arr, NPY_ARRAY_OWNDATA); */
         /* int nd; */
         /* npy_intp *dims */
         /* void *data; */
-        /* int nd = 2; */
-        /* npy_intp *dims; */
-        /* dims = snxy */
+        int nd = 2;
+        npy_intp *dims;
+        dims = snxy;
         /* arr = PyArray_SimpleNewFromData(nd, dims, typenum, data);` */
-        /* Earr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX128, Efields);` */
-        /* Harr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX128, Hfields);` */
-		for(k = 0; k < 2; ++k){
-			PyObject *pk = PyTuple_New(nxy[0]);
-			PyTuple_SetItem(rv, k, pk);
-            for(i = 0; i < nxy[0]; ++i){
-				PyObject *pi = PyTuple_New(nxy[1]);
-				PyTuple_SetItem(pk, i, pi);
-                for(j = 0; j < nxy[1]; ++j){
-					PyObject *pj = PyTuple_New(3);
-					PyTuple_SetItem(pi, j, pj);
-					for(i3 = 0; i3 < 3; ++i3){
-						PyTuple_SetItem(pj, i3, PyComplex_FromDoubles(
-							F[k][2*(3*(i+j*nxy[0])+i3)+0],
-							F[k][2*(3*(i+j*nxy[0])+i3)+1]
-						));
-					}
-				}
-			}
-		}
-		free(Hfields);
-		free(Efields);
-		free(filename);
-		return rv;
+        printf("Making numpy arrays\n");
+        PyObject *Earr=NULL;
+        PyObject *Harr=NULL;
+        PyObject *Edeallocator;
+        PyObject *Hdeallocator;
+        Earr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX64, Efields);
+        Harr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX64, Hfields);
+        if(Earr == NULL){
+            free(Efields);
+            Py_XDECREF(Earr);
+            HandleSolutionErrorCode("GetFieldsOnGrid", 1);
+            return NULL;
+        }
+        if(Harr == NULL){
+            free(Hfields);
+            Py_XDECREF(Harr);
+            HandleSolutionErrorCode("GetFieldsOnGrid", 1);
+            return NULL;
+        }
+        Edeallocator = PyObject_New(_ArrayDeallocator, &_ArrayDeallocator_Type);
+        Hdeallocator = PyObject_New(_ArrayDeallocator, &_ArrayDeallocator_Type);
+        if(Edeallocator == NULL){
+            free(Efields);
+            Py_XDECREF(Earr);
+            HandleSolutionErrorCode("GetFieldsOnGrid", 1);
+            return NULL;
+        }
+        if(Hdeallocator == NULL){
+            free(Hfields);
+            Py_XDECREF(Harr);
+            HandleSolutionErrorCode("GetFieldsOnGrid", 1);
+            return NULL;
+        }
+        ((_ArrayDeallocator *)Edeallocator)->memory = Efields;
+        ((_ArrayDeallocator *)Hdeallocator)->memory = Hfields;
+        PyArray_BASE(Earr) = Edeallocator;
+        PyArray_BASE(Harr) = Hdeallocator;
+        printf("Arrays created!\n");
+        /* printf("Arrays created! Enabling OWNDATA flag\n"); */
+        /* PyArray_ENABLEFLAGS(Earr, NPY_ARRAY_OWNDATA); */
+        /* PyArray_ENABLEFLAGS(Harr, NPY_ARRAY_OWNDATA); */
+        /* print("Flag enabled!\n"); */
+        /* PyTuple_SetItem(rv, 0, Earr); */
+        /* PyTuple_SetItem(rv, 1, Harr); */
+        /* printf("Added to tuple!\n"); */
+		/* for(k = 0; k < 2; ++k){ */
+		/* 	PyObject *pk = PyTuple_New(nxy[0]); */
+		/* 	PyTuple_SetItem(rv, k, pk); */
+            /* for(i = 0; i < nxy[0]; ++i){ */
+		/* 		PyObject *pi = PyTuple_New(nxy[1]); */
+		/* 		PyTuple_SetItem(pk, i, pi); */
+                /* for(j = 0; j < nxy[1]; ++j){ */
+		/* 			PyObject *pj = PyTuple_New(3); */
+		/* 			PyTuple_SetItem(pi, j, pj); */
+		/* 			for(i3 = 0; i3 < 3; ++i3){ */
+		/* 				PyTuple_SetItem(pj, i3, PyComplex_FromDoubles( */
+		/* 					F[k][2*(3*(i+j*nxy[0])+i3)+0], */
+		/* 					F[k][2*(3*(i+j*nxy[0])+i3)+1] */
+		/* 				)); */
+		/* 			} */
+		/* 		} */
+		/* 	} */
+		/* } */
+		/* free(Hfields); */
+		/* free(Efields); */
+		/* free(filename); */
+		/* return rv; */
+		return Py_BuildValue("(OO)", Earr, Harr);
 	}
 }
 
@@ -2092,7 +2178,9 @@ PyMODINIT_FUNC initS4(void)
 	if(PyType_Ready(&S4Sim_Type) < 0){ INITERROR; }
 	if(PyType_Ready(&S4Interpolator_Type) < 0){ INITERROR; }
 	if(PyType_Ready(&S4SpectrumSampler_Type) < 0){ INITERROR; }
-
+    _ArrayDeallocator_Type.tp_new = PyType_GenericNew;
+    /* _ArrayDeallocator_Type.ob_type = &PyType_Type; */
+    if(PyType_Ready(&_ArrayDeallocator_Type) < 0) { INITERROR; }
 	/* Create the module and add the functions */
 #if PY_MAJOR_VERSION >= 3
 	m = PyModule_Create(&S4_module);
