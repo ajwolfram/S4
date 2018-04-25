@@ -1434,11 +1434,11 @@ static PyObject *S4Sim_GetFieldsOnGridNumpy(S4Sim *self, PyObject *args, PyObjec
   PyObject *Earr;
   /* PyArray_Descr* desc = PyArray_DescrFromType(NPY_COMPLEX128); */
   Earr = PyArray_SimpleNewFromData(3, dims, NPY_COMPLEX128, Efields);
-  PyArray_Dims new_dims;
-  npy_intp tmp[3] = {1, 0, 2};
-  new_dims.ptr = tmp;
-  new_dims.len = 3;
-  Earr = PyArray_Transpose(Earr, &new_dims);
+  /* PyArray_Dims new_dims; */
+  /* npy_intp tmp[3] = {1, 0, 2}; */
+  /* new_dims.ptr = tmp; */
+  /* new_dims.len = 3; */
+  /* Earr = PyArray_Transpose(Earr, &new_dims); */
   /* npy_intp *strides = PyArray_STRIDES(Earr); */
   /* npy_intp temp; */
   /* temp = strides[0]; */
@@ -1449,7 +1449,7 @@ static PyObject *S4Sim_GetFieldsOnGridNumpy(S4Sim *self, PyObject *args, PyObjec
   /* PyArray_ENABLEFLAGS(Earr,  NPY_ARRAY_F_CONTIGUOUS); */
   PyObject *Harr;
   Harr = PyArray_SimpleNewFromData(3, dims, NPY_COMPLEX128, Hfields);
-  Harr = PyArray_Transpose(Harr, &new_dims);
+  /* Harr = PyArray_Transpose(Harr, &new_dims); */
   /* strides = PyArray_STRIDES(Harr); */
   /* temp = strides[0]; */
   /* strides[0] = strides[1]; */
@@ -1511,8 +1511,8 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 	if(0 == strcmp("FileWrite", fmt)){
 		filename[len+1] = 'E';
 		fp = fopen(filename, "wb");
-		for(i = 0; i < nxy[0]; ++i){
-			for(j = 0; j < nxy[1]; ++j){
+		for(j = 0; j < nxy[1]; ++j){
+			for(i = 0; i < nxy[0]; ++i){
 				fprintf(fp,
 					"%d\t%d\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\n",
 					i, j,
@@ -1529,8 +1529,8 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 		fclose(fp);
 		filename[len+1] = 'H';
 		fp = fopen(filename, "wb");
-		for(i = 0; i < nxy[0]; ++i){
-			for(j = 0; j < nxy[1]; ++j){
+		for(j = 0; j < nxy[1]; ++j){
+			for(i = 0; i < nxy[0]; ++i){
 				fprintf(fp,
 					"%d\t%d\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\n",
 					i, j,
@@ -1552,8 +1552,8 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 	}else if(0 == strcmp("FileAppend", fmt)){
 		filename[len+1] = 'E';
 		fp = fopen(filename, "ab");
-		for(i = 0; i < nxy[0]; ++i){
-			for(j = 0; j < nxy[1]; ++j){
+		for(j = 0; j < nxy[1]; ++j){
+			for(i = 0; i < nxy[0]; ++i){
 				fprintf(fp,
 					"%d\t%d\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\n",
 					i, j, z,
@@ -1571,8 +1571,8 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 		fclose(fp);
 		filename[len+1] = 'H';
 		fp = fopen(filename, "ab");
-		for(i = 0; i < nxy[0]; ++i){
-			for(j = 0; j < nxy[1]; ++j){
+		for(j = 0; j < nxy[1]; ++j){
+			for(i = 0; i < nxy[0]; ++i){
 				fprintf(fp,
 					"%d\t%d\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\n",
 					i, j, z,
@@ -1608,14 +1608,14 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
         /* Earr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX128, Efields);` */
         /* Harr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX128, Hfields);` */
 		for(k = 0; k < 2; ++k){
-			PyObject *pk = PyTuple_New(nxy[0]);
+			PyObject *pk = PyTuple_New(nxy[1]);
 			PyTuple_SetItem(rv, k, pk);
-            for(i = 0; i < nxy[0]; ++i){
-				PyObject *pi = PyTuple_New(nxy[1]);
-				PyTuple_SetItem(pk, i, pi);
-                for(j = 0; j < nxy[1]; ++j){
+            for(j = 0; j < nxy[1]; ++j){
+				PyObject *pi = PyTuple_New(nxy[0]);
+				PyTuple_SetItem(pk, j, pi);
+                for(i = 0; i < nxy[0]; ++i){
 					PyObject *pj = PyTuple_New(3);
-					PyTuple_SetItem(pi, j, pj);
+					PyTuple_SetItem(pi, i, pj);
 					for(i3 = 0; i3 < 3; ++i3){
 						PyTuple_SetItem(pj, i3, PyComplex_FromDoubles(
 							F[k][2*(3*(i+j*nxy[0])+i3)+0],
