@@ -9,6 +9,7 @@ echo "LIBFILE: $LIBFILE"
 
 cat <<SETUPPY > setup.py
 from distutils.core import setup, Extension
+import numpy as np
 #import os
 #os.environ["CC"] = "g++"
 #os.environ["CXX"] = "g++"
@@ -16,7 +17,7 @@ from distutils.core import setup, Extension
 libs = ['S4', 'stdc++']
 lib_dirs = ['$OBJDIR', '$BOOST_PREFIX/lib']
 libs.extend([lib[2::] for lib in '$LIBS'.split()])
-include_dirs = ['$BOOST_PREFIX/include']
+include_dirs = ['$BOOST_PREFIX/include', np.get_include()]
 extra_link_args = ['$LIBFILE']
 
 S4module = Extension('S4',
