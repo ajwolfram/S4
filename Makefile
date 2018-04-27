@@ -63,8 +63,8 @@ CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
 # Enable S4_TRACE debugging
 # values of 1, 2, 3 enable debugging, with verbosity increasing as 
 # value increases. 0 to disable
-S4_DEBUG = 1
-
+S4_DEBUG = 0
+S4_PROF = 0
 
 # Specify custom compilers if needed
 CXX = g++
@@ -81,9 +81,9 @@ S4_BINNAME = $(OBJDIR)/S4
 S4_LIBNAME = $(OBJDIR)/libS4.a
 S4r_LIBNAME = $(OBJDIR)/libS4r.a
 
-#### Download, compile, and install boost serialization lib.
+#### Download, compile, and install boost serialization lib. 
 #### This should all work fine, you must modify BOOST_INC, BOOST_LIBS,
-#### and PREFIX if you want to install boost to a different location
+#### and PREFIX if you want to install boost to a different location 
 
 # Specify the paths to the boost include and lib directories
 BOOST_PREFIX=${CURDIR}/S4
@@ -96,7 +96,7 @@ $(BOOST_FILE):
 	wget $(BOOST_URL) -O $(BOOST_FILE)
 
 # Target for extracting boost from archive and compiling. Depends on download target above
-${CURDIR}/S4/lib: $(BOOST_FILE)
+${CURDIR}/S4/lib: $(BOOST_FILE)  
 	$(eval BOOST_DIR := $(shell tar tzf $(BOOST_FILE) | sed -e 's@/.*@@' | uniq))
 	@echo Boost dir is $(BOOST_DIR)
 	tar -xzvf $(BOOST_FILE)
@@ -112,18 +112,26 @@ boost: $(BOOST_PREFIX)/lib
 
 CPPFLAGS = -Wall -I. -IS4 -IS4/RNP -IS4/kiss_fft 
  
+ifeq ($(S4_PROF), 1)
+CPPFLAGS += -g -pg
+endif
+
 ifeq ($(S4_DEBUG), 1)
-# CPPFLAGS += -DENABLE_S4_TRACE
 CPPFLAGS += -ggdb 
 endif
 
 ifeq ($(S4_DEBUG), 2)
 CPPFLAGS += -DENABLE_S4_TRACE
-CPPFLAGS += -DDUMP_MATRICES
 CPPFLAGS += -ggdb 
 endif
 
 ifeq ($(S4_DEBUG), 3)
+CPPFLAGS += -DENABLE_S4_TRACE
+CPPFLAGS += -DDUMP_MATRICES
+CPPFLAGS += -ggdb
+endif
+
+ifeq ($(S4_DEBUG), 4)
 CPPFLAGS += -DENABLE_S4_TRACE
 CPPFLAGS += -DDUMP_MATRICES
 CPPFLAGS += -DDUMP_MATRICES_LARGE
