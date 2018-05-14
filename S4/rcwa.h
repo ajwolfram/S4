@@ -347,6 +347,8 @@ int SolveInterior(
 // =======
 // Transforms a mode amplitude vector from SolveInterior to a
 // particular z-coordinate within the layer.
+// THIS MODIFIES THE POINTER ab. ALWAYS PASS IN A COPY TO RETAIN SOLUTION
+// AMPLITUDES
 //
 // Arguments
 // =========
