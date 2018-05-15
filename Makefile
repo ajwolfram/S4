@@ -128,7 +128,7 @@ endif
 ifeq ($(S4_DEBUG), 3)
 CPPFLAGS += -DENABLE_S4_TRACE
 CPPFLAGS += -DDUMP_MATRICES
-CPPFLAGS += -ggdb
+CPPFLAGS += -ggdb 
 endif
 
 ifeq ($(S4_DEBUG), 4)
@@ -340,7 +340,7 @@ FunctionSampler2D.so: modules/function_sampler_2d.c modules/function_sampler_2d.
 S4_pyext: objdir $(S4_LIBNAME)
 	# sh gensetup.py.sh $(OBJDIR) $(S4_LIBNAME) $(LIBS)
 	sh gensetup.py.sh $(OBJDIR) $(S4_LIBNAME) $(LIBS) $(BOOST_PREFIX)
-	pip install --upgrade ./
+	pip3 install --upgrade ./
 
 clean:
 	rm -rf $(OBJDIR)
