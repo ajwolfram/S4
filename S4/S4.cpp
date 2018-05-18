@@ -2745,7 +2745,10 @@ int Simulation_GetPropagationConstants(S4_Simulation *S, S4_Layer *L, double *q)
 		return -1;
 	}
 
-	for(int i = 0; i < n; ++i){
+    // layer_bands->q contains 2*n std::complex<double>. The pointer to q
+    // passed in to this function hopefully points to a memory space that can
+    // fit 4*n doubles (2 * 2n)
+	for(int i = 0; i < 2*n; ++i){
 		q[2*i+0] = layer_modes->q[i].real();
 		q[2*i+1] = layer_modes->q[i].imag();
 	}
