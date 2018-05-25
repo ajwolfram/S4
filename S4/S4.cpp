@@ -373,6 +373,7 @@ void save(Archive &ar, const FieldCache &f, const unsigned int version)
     ar & bs::make_nvp("P_is_null", P_is_null);
     ar & bs::make_nvp("W_is_null", W_is_null);
     ar & bs::make_nvp("n", f.n);
+    // This save excludes the null terminator
     int name_len = strlen(f.layer);
     ar & bs::make_nvp("name_len", name_len);
     ar & bs::make_nvp("layer", bs::make_array(f.layer, name_len));
@@ -407,8 +408,13 @@ void load(Archive &ar, FieldCache &f, const unsigned int version)
     int name_len;
     ar & bs::make_nvp("name_len", name_len);
     S4_TRACE("FieldCache.load: name_len = %d\n", name_len);
-    f.layer = (char*)S4_malloc(sizeof(char)*name_len);
+    // +1 for null termination
+    f.layer = (char*)malloc(sizeof(char)*(name_len+1));
+    // Set everything to null before reading in name_len chars to get the null
+    // terminator in there at the end
+    memset(f.layer, '\0', name_len+1);
     ar & bs::make_nvp("layer", bs::make_array(f.layer, name_len));
+    S4_TRACE("FieldCache.load: layer name = %s\n", f.layer);
     int nn4 = 4*f.n*f.n;
     if(P_is_null == 0){
         f.P = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*nn4);
@@ -3593,11 +3599,8 @@ int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], doubl
     std::complex<double> epsilon = 0;
     if(S->options.use_weismann_formulation > 0) {
         // I need to jump in right here and do a few thing
-        std::complex<double> *P = Simulation_GetCachedField((const Simulation *)S, (const Layer *)L);
-        std::complex<double> *W = Simulation_GetCachedW((const Simulation *)S, (const Layer *)L);
-        //printf"Layer = %s\n", L->name);
-        //printf"P = %p\n", P);
-        //printf"W = %p\n", W);
+        P = Simulation_GetCachedField((const S4_Simulation *)S, (const S4_Layer *)L);
+        W = Simulation_GetCachedW((const S4_Simulation *)S, (const S4_Layer *)L);
         const double xy[2] = {r[0], r[1]};
         const S4_Material *M;
         int shape_index;
@@ -3616,6 +3619,7 @@ int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], doubl
     }
     if(P != NULL && W != NULL){
         S4_VERB(1, "Using Weismann Formulation\n");
+        S4_TRACE("Using Weismann Formulation\n");
         GetFieldAtPointImproved(
             S->n_G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
             Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, P, Lmodes->Epsilon2, epsilon, Lmodes->epstype,
@@ -3706,12 +3710,12 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
     std::complex<double> *P = NULL;
     std::complex<double> *W = NULL;
     std::complex<double> *epsilon = NULL;
+    S4_TRACE("############################\n");
+    S4_TRACE("Layer = %s\n", L->name);
     if(S->options.use_weismann_formulation > 0) {
+        S4_TRACE("Constructing P and W\n");
         P = Simulation_GetCachedField((const Simulation *)S, (const Layer *)L);
         W = Simulation_GetCachedW((const Simulation *)S, (const Layer *)L);
-//        printf("Layer = %s\n", L->name);
-//        printf("P = %p\n", P);
-//        printf("W = %p\n", W);
         // TODO: Need to build out an array of epsilon values at each each grid
         // point, and pass this array into GetFieldOnGridImproved so it can be
         // indexed into when computing real space reconstructions of E from
@@ -3756,8 +3760,12 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
             }
         }
     }
+    S4_TRACE("P = %p\n", P);
+    S4_TRACE("W = %p\n", W);
     if(P != NULL && W != NULL){
         S4_VERB(1, "Using Weismann Formulation\n");
+        S4_TRACE("Using Weismann Formulation\n");
+        S4_TRACE("############################\n");
         GetFieldOnGridImproved(
             S->n_G, S->solution->G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
             Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, P, W, epsilon, Lmodes->epstype,
@@ -3765,13 +3773,6 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
             reinterpret_cast<std::complex<double>*>(E),
             reinterpret_cast<std::complex<double>*>(H)
         );
-        // GetFieldOnGrid(
-        //     S->n_G, S->solution->G, S->solution->kx, S->solution->ky, std::complex<double>(S->omega[0],S->omega[1]),
-        //     Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
-        //     ab, snxy,
-        //     reinterpret_cast<std::complex<double>*>(E),
-        //     reinterpret_cast<std::complex<double>*>(H)
-        // );
         S4_free(epsilon);
     } else {
         GetFieldOnGrid(
@@ -4212,8 +4213,9 @@ void Simulation_InvalidateFieldCache(S4_Simulation *S){
         S4_free(t->W);
         // layer actually just stores a character array containing the name of
         // a layer in it's own memory space, not a pointer to a layer object
-        // So we need to free that memory
-        S4_free(t->layer);
+        // So we need to free that memory. Allocated with strdup(), so need to
+        // use normal free()
+        free(t->layer);
 		S4_free(t);
 	}
 	S->field_cache = NULL;
@@ -4263,12 +4265,10 @@ void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t 
 	memcpy(f->P, P, sizeof(std::complex<double>)*Plen);
     f->W = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*Wlen);
 	memcpy(f->W, W, sizeof(std::complex<double>)*Wlen);
-    int len = strlen(layer->name);
-    S4_TRACE("> Simulation_AddFieldToCache: Name length =  %d\n", len);
-    f->layer = (char*)S4_malloc(sizeof(char)*len);
     S4_TRACE("> Simulation_AddFieldToCache: Input Layer name: %s (%p)\n", layer->name, layer->name);
-	strcpy(f->layer, layer->name);
+    f->layer = strdup(layer->name);
     S4_TRACE("> Simulation_AddFieldToCache: FieldCache Layer name: %s (%p)\n", f->layer, f->layer);
+    S4_TRACE("> Simulation_AddFieldToCache: Name length =  %d\n", strlen(f->layer));
 	f->n = n;
 	f->next = S->field_cache;
 	S->field_cache = f;
