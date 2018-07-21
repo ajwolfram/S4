@@ -1488,8 +1488,11 @@ static PyObject *S4Sim_GetFieldsOnGridNumpy(S4Sim *self, PyObject *args, PyObjec
   /* temp = strides[0]; */
   /* strides[0] = strides[1]; */
   /* strides[1] = temp; */
+
   /* PyArray_UpdateFlags(Harr, NPY_ARRAY_UPDATE_ALL); */
   PyArray_ENABLEFLAGS(Harr, NPY_ARRAY_OWNDATA);
+  /* Harr->flags |= NPY_OWNDATA */
+
   /* PyArray_ENABLEFLAGS(Harr,  NPY_ARRAY_F_CONTIGUOUS); */
 
 
@@ -1501,7 +1504,8 @@ static PyObject *S4Sim_GetFieldsOnGridNumpy(S4Sim *self, PyObject *args, PyObjec
   /* } */
 
   /* return EHfields; */
-  return Py_BuildValue("(OO)", Earr, Harr);
+  /* return Py_BuildValue("(OO)", Earr, Harr); */
+  return Py_BuildValue("(NN)", Earr, Harr);
 
  fail:
   /* Py_XDECREF(EHfields); */
