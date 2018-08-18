@@ -63,7 +63,7 @@ CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
 # Enable S4_TRACE debugging
 # values of 1, 2, 3 enable debugging, with verbosity increasing as 
 # value increases. 0 to disable
-S4_DEBUG = 0
+S4_DEBUG = 3
 S4_PROF = 0
 
 # Specify custom compilers if needed

@@ -120,9 +120,9 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 		}
         // Number of real space grid points
 		const int ng2 = ngrid[0]*ngrid[1];
-
-        // Memory workspace array. N = number of basis terms, ng = number of
-        // real space grid points for vector field. Has length 6N^2 + 4*ng
+	
+        // Memory workspace array. N = number of basis terms, nn = N^2, ng = number of
+        // real space grid points for vector field. Has length 6N^2 + 4*ng 
 		work = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*(6*nn + 4*ng2));
         // mDelta stored from beginning of workspace to N^2
         // mDelta is an NxN matrix
@@ -327,11 +327,21 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
             RNP::IO::PrintMatrix(n,n,eta_inv,n, DUMP_STREAM) << std::endl << std::endl;
 #endif
         // Then lets construct \hat{N}. This is the operator that projects onto the
-        // direction normal to a material interface, and is just I - P
+        // direction normal to a material interface, and is just \hat{I} - P
         std::complex<double> *N;
         N = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
-        // Set N to the identity first
-        RNP::TBLAS::SetMatrix<'A'>(n2,n2, std::complex<double>(0.), std::complex<double>(1.), N, n2);
+        // Set N to the DFT of the identity (not the same as the identity!).
+        // Also need to zero out the memory for the matrix or we'll get garbage
+        // RNP::TBLAS::SetMatrix<'A'>(n2,n2, std::complex<double>(0.), std::complex<double>(1.), N, n2);
+        RNP::TBLAS::SetMatrix<'A'>(n2,n2, std::complex<double>(0.), std::complex<double>(0.), N, n2);
+        size_t row_ind;
+        std::complex<double> mat_val = std::complex<double>(n2);
+        for(size_t col_ind = 1; col_ind < n2; ++col_ind){
+            row_ind = n2 - col_ind;
+            N[(n2 - col_ind)*n2 + col_ind] = mat_val;
+        }
+        N[0] = mat_val;
+
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "N:" << std::endl;
         RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;

@@ -2494,6 +2494,8 @@ void GetFieldOnGridImproved(
 			from[1][ii+jj*nxy[0]] = hy[i];
 			from[2][ii+jj*nxy[0]] = (kx[i] * ney[i] + ky[i] * ex[i]) / omega;
 			from[3][ii+jj*nxy[0]] = dnx[i];
+            // Double negative here. ndny means "negative y component of d
+            // normal"
 			from[4][ii+jj*nxy[0]] = -ndny[i];
 			from[5][ii+jj*nxy[0]] = eh[n+i] / omega;
 			from[6][ii+jj*nxy[0]] = etx[i];
@@ -2501,6 +2503,7 @@ void GetFieldOnGridImproved(
 		}
 	}
 
+    // Do the inverse fourier transform here
 	for(unsigned i = 0; i < 8; ++i){
 		fft_plan_exec(plan[i]);
 	}
