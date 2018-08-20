@@ -102,7 +102,17 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 		// We need to compute the vector field
 
 		// Make vector fields
-		// Determine size of the vector field grid
+		// Determine size of the real space vector field grid. The size is
+        // determined by 2 things:
+        // 1) The number of basis terms set in Fourier space. n is the number
+        // of basis terms. The first loop sets the number of real space grid
+        // points in either dimension to the largest corresponding component of
+        // the available reciprocal lattice vectors
+        // 2) The resolution option set in the Solver options. The number of
+        // grid points determined above is multiplied by this resolution, then
+        // we find the "next fast size" for the Fourier transform we are about
+        // to take. This increases the resolution until we get to a power of
+        // two I'm pretty sure.
 		int ngrid[2] = {1,1};
 		for(int i = 0; i < 2; ++i){ // choose grid size
 			int allzero = 1;
@@ -131,18 +141,19 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         // Eta is and NxN matrix
         // Eta = work[N^2:2N^2]
 		Eta = mDelta + nn;
-        // P is an NxN matrix in real space, which is why we only allocate N^2
-        // elements for it here. After Fourier transforming it becomes larger
-        // P = work[2N^2:3N^2]
-		P = Eta + nn;
+        // P = work[2N^2:6N^2]
         // Ffrom is the real space thing we will be Fourier transforming
-        // Ffrom = work[3N^2:7N^2]
+        // Fto is where the results of the fourier transform are placed.
+        // The Fourier space representation of P is 2N_G x 2N_G, which is
+        // why we allocate 4N_G^2 memory space for it below.
+        // Ffrom is ngrid[0] x ngrid[1], same with Fto
+		P = Eta + nn;
+        // Ffrom = work[6N^2:6N^2 + ng2]
 		std::complex<double> *Ffrom = P + 4*nn; // Fourier source
-        // This is where the results of the fourier transform are placed.
-        // Ffrom = work[7N^2:7N^2 + ng]
+        // Fto = work[6N^2 + ng2:6N^2 + 2*ng2]
 		std::complex<double> *Fto = Ffrom + ng2; // Fourier dest
-        // The real space vector field.
-        // par = work[7N^2 + ng: 7N^2 + 2ng]
+        // The real space vector field. 
+        // par = work[6N^2 + 2*ng2:6N^2 + 3*ng2]
 		std::complex<double> *par = Fto + ng2; // real space parallel vector
 
 		// Generate the vector field
@@ -179,8 +190,10 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 				if(NULL != ivalues){ S4_free(ivalues); }
 				return error;
 			}
-
-			// Normalize the field to max length
+			
+			// Normalize the field so the largest tangential vector is at most
+            // of length 1 by finding the largest vector then dividing all
+            // other vectors by its magnitude
 			{
 				double maxlen = 0;
 				for(ii[1] = 0; ii[1] < ngrid[1]; ++ii[1]){
@@ -252,11 +265,6 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
             // This is now copying the results of the Fourier transform (the
             // Fourier transform of P) into the P pointer. The P pointer is a
             // just a pointer to a particular location in the worksapce array.
-            // P in real space in NxN, but its Fourier transform is 2Nx2N, so
-            // here we are computing a larger matrix and just storing it in P.
-            // This means we are actually overwriting parts of Ffrom, but
-            // that's okay because we already Fourier transformed it and don't
-            // need it anymore
 			for(int j = 0; j < n; ++j){
 				for(int i = 0; i < n; ++i){
                     // Get indices of lattice points in Fourier space
