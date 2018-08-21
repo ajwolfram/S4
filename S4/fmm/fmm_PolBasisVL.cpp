@@ -334,21 +334,25 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
             DUMP_STREAM << "eta_inv:" << std::endl;
             RNP::IO::PrintMatrix(n,n,eta_inv,n, DUMP_STREAM) << std::endl << std::endl;
 #endif
-        // Then lets construct \hat{N}. This is the operator that projects onto the
-        // direction normal to a material interface, and is just \hat{I} - P
+        // Then lets construct \hat{N}. This is the Fourier space
+        // representation of the operator that projects onto the direction
+        // normal to material interfaces
         std::complex<double> *N;
         N = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
-        // Set N to the DFT of the identity (not the same as the identity!).
-        // Also need to zero out the memory for the matrix or we'll get garbage
-        // RNP::TBLAS::SetMatrix<'A'>(n2,n2, std::complex<double>(0.), std::complex<double>(1.), N, n2);
+        // Zero out the matrix
         RNP::TBLAS::SetMatrix<'A'>(n2,n2, std::complex<double>(0.), std::complex<double>(0.), N, n2);
-        size_t row_ind;
-        std::complex<double> mat_val = std::complex<double>(n2);
-        for(size_t col_ind = 1; col_ind < n2; ++col_ind){
-            row_ind = n2 - col_ind;
-            N[(n2 - col_ind)*n2 + col_ind] = mat_val;
+        double arg = -2*M_PI/n;
+        std::complex<double> omega = std::complex<double>(cos(arg), sin(arg));
+        // First we need to set the top left and bottom right N_GxN_G blocks of
+        // N to the N_GxN_G DFT matrix
+        for(size_t j = 0; j < n; ++j){
+            for(size_t i = 0; i < n; ++i){
+                // Top left block
+                N[j+i*n2] = std::pow(omega, i*j);
+                // Bottom right block
+                N[n+i+(n+j)*n2] = std::pow(omega, i*j);
+            }
         }
-        N[0] = mat_val;
 
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "N:" << std::endl;
@@ -363,8 +367,6 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "N:" << std::endl;
         RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
-        /* DUMP_STREAM << "Epsilon_inv:" << std::endl; */
-        /* RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl; */
 #endif
         // Now we compute the matrix product of N and Epsilon2 and store it in
         // the memory space of N
@@ -387,16 +389,12 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
             int Erow = (w&1 ? n : 0);
             int Ecol = (w&2 ? n : 0);
             // m = n, n = n, k = n
-            // mDelta sub-block = A (nxn)
-            // P sub-block = B (nxn)
-            // Epsilon2 sub-block = C (nxn)
-            // alpha = beta = 1
             // Computes C := alpha*A*B + beta*C
-            // We'll do the first term first, which means right multiplying by Epsilon_inv.
+            // We'll do the first term first, which means right multiplying by eta_inv.
             // We don't add the contents of Ncombo here because its empty
             RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),&N[Erow+Ecol*n2],n2,eta_inv,n,std::complex<double>(0),&W[Erow+Ecol*n2],n2);
             // Now do the second term, which means left multiplying by
-            // Epsilon_inv. Now we _do_ add the contents of Ncombo, bcause it
+            // eta_inv. Now we _do_ add the contents of Ncombo, bcause it
             // already contains the first term
             RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),eta_inv,n,&N[Erow+Ecol*n2],n2,std::complex<double>(1.),&W[Erow+Ecol*n2],n2);
         }
