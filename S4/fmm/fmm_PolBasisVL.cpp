@@ -97,8 +97,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 	std::complex<double> *work = NULL;
 	std::complex<double> *mDelta = NULL;
 	std::complex<double> *Eta = NULL;
-    int pnotcached = NULL == P;
-	if(pnotcached){
+	if(NULL == P){
 		// We need to compute the vector field
 
 		// Make vector fields
@@ -133,7 +132,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 	
         // Memory workspace array. N = number of basis terms, nn = N^2, ng = number of
         // real space grid points for vector field. Has length 6N^2 + 4*ng 
-		work = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*(6*nn + 4*ng2));
+		work = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*(6*nn + 5*ng2));
         // mDelta stored from beginning of workspace to N^2
         // mDelta is an NxN matrix
         // mDelta = work[0:N^2]
@@ -141,6 +140,8 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         // Eta is and NxN matrix
         // Eta = work[N^2:2N^2]
 		Eta = mDelta + nn;
+        std::complex<double> *N;
+        N = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
         // P = work[2N^2:6N^2]
         // Ffrom is the real space thing we will be Fourier transforming
         // Fto is where the results of the fourier transform are placed.
@@ -155,6 +156,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         // The real space vector field. 
         // par = work[6N^2 + 2*ng2:6N^2 + 3*ng2]
 		std::complex<double> *par = Fto + ng2; // real space parallel vector
+		std::complex<double> *normpar = par + ng2; // real space normal vector
 
 		// Generate the vector field
 		const double ing2 = 1./(double)ng2;
@@ -164,6 +166,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         // has two components, so we need to store two doubles for every grid
         // point
         double *vfield = (double*)S4_malloc(sizeof(double)*2*ng2);
+        double *nvfield = (double*)S4_malloc(sizeof(double)*2*ng2);
 		if(0 == S->Lr[2] && 0 == S->Lr[3]){ // 1D, generate the trivial field
 			double nv[2] = {-S->Lr[1], S->Lr[0]};
 			double nva = hypot(nv[0],nv[1]);
@@ -186,6 +189,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 			if(0 != error){
 				S4_TRACE("< Simulation_ComputeLayerBands (failed; Pattern_GenerateFlowField returned %d) [omega=%f]\n", error, S->omega[0]);
 				if(NULL != vfield){ S4_free(vfield); }
+				if(NULL != vfield){ S4_free(nvfield); }
 				if(NULL != work){ S4_free(work); }
 				if(NULL != ivalues){ S4_free(ivalues); }
 				return error;
@@ -213,8 +217,16 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 						vfield[2*(ii[0]+ii[1]*ngrid[0])+1] *= maxlen;
 					}
 				}
+				for(ii[1] = 0; ii[1] < ngrid[1]; ++ii[1]){
+					for(ii[0] = 0; ii[0] < ngrid[0]; ++ii[0]){
+						nvfield[2*(ii[0]+ii[1]*ngrid[0])+0] = vfield[2*(ii[0]+ii[1]*ngrid[0])+1];
+						nvfield[2*(ii[0]+ii[1]*ngrid[0])+1] = -1*vfield[2*(ii[0]+ii[1]*ngrid[0])+0];
+					}
+				}
 			}
+
 		}
+
 
 		if(NULL != S->options.vector_field_dump_filename_prefix){
 			const char *layer_name = NULL != L->name ? L->name : "";
@@ -223,15 +235,24 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 			strcpy(filename, S->options.vector_field_dump_filename_prefix);
 			strcpy(filename+prefix_len, layer_name);
 			FILE *fp = fopen(filename, "wb");
-			if(NULL != fp){
+            char *nfilename = (char*)malloc(sizeof(char) * (prefix_len + strlen(layer_name) + 1 + 6));
+            memset(nfilename, '\0', sizeof(char)*(prefix_len + strlen(layer_name) + 1 + 6));
+			strcpy(nfilename, filename);
+            strcat(nfilename, "Normal");
+			FILE *nfp = fopen(nfilename, "wb");
+			if(NULL != fp && NULL != nfp){
 				for(ii[1] = 0; ii[1] < ngrid[1]; ++ii[1]){
 					for(ii[0] = 0; ii[0] < ngrid[0]; ++ii[0]){
 						fprintf(fp, "%d\t%d\t%f\t%f\n", ii[0], ii[1], vfield[2*(ii[0]+ii[1]*ngrid[0])+0], vfield[2*(ii[0]+ii[1]*ngrid[0])+1]);
-					} fprintf(fp, "\n");
+						fprintf(nfp, "%d\t%d\t%f\t%f\n", ii[0], ii[1], nvfield[2*(ii[0]+ii[1]*ngrid[0])+0], nvfield[2*(ii[0]+ii[1]*ngrid[0])+1]);
+					}
+                    fprintf(fp, "\n");
+                    fprintf(nfp, "\n");
 				}
 				fclose(fp);
 			}
 			free(filename);
+			free(nfilename);
 		}
 			
 	    // Here vfield contains the real space vector field. It seems to be
@@ -241,6 +262,8 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 			for(ii[0] = 0; ii[0] < ngrid[0]; ++ii[0]){
 				par[2*(ii[0]+ii[1]*ngrid[0])+0] = vfield[2*(ii[0]+ii[1]*ngrid[0])+0];
 				par[2*(ii[0]+ii[1]*ngrid[0])+1] = vfield[2*(ii[0]+ii[1]*ngrid[0])+1];
+				normpar[2*(ii[0]+ii[1]*ngrid[0])+0] = nvfield[2*(ii[0]+ii[1]*ngrid[0])+0];
+				normpar[2*(ii[0]+ii[1]*ngrid[0])+1] = nvfield[2*(ii[0]+ii[1]*ngrid[0])+1];
 			}
 		}
 
@@ -270,51 +293,69 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
                     // Get indices of lattice points in Fourier space
 					int f[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
                     // Shift so everything its indexed from 0
+                    // std::cout << "before f[0]: " << f[0] << "\n";
+                    // std::cout << "before f[1]: " << f[1] << "\n";
 					if(f[0] < 0){ f[0] += ngrid[0]; }
 					if(f[1] < 0){ f[1] += ngrid[1]; }
+                    // std::cout << "after f[0]: " << f[0] << "\n";
+                    // std::cout << "after f[1]: " << f[1] << "\n";
+                    // std::cout << "P index> " << Erow+i+(Ecol+j)*n2 << "\n";
 					P[Erow+i+(Ecol+j)*n2] = ing2 * Fto[f[1]+f[0]*ngrid[1]];
+// #ifdef DUMP_MATRICES
+//                     DUMP_STREAM << "P:" << std::endl;
+//                     RNP::IO::PrintMatrix(n2,n2,P,n2, DUMP_STREAM) << std::endl << std::endl;
+// #endif
+				}
+			}
+			for(ii[1] = 0; ii[1] < ngrid[1]; ++ii[1]){
+				const int si1 = ii[1] >= ngrid[1]/2 ? ii[1]-ngrid[1]/2 : ii[1]+ngrid[1]/2;
+				for(ii[0] = 0; ii[0] < ngrid[0]; ++ii[0]){
+					const int si0 = ii[0] >= ngrid[0]/2 ? ii[0]-ngrid[0]/2 : ii[0]+ngrid[0]/2;
+					Ffrom[si1+si0*ngrid[1]] = normpar[2*(ii[0]+ii[1]*ngrid[0])+_1]*normpar[2*(ii[0]+ii[1]*ngrid[0])+_2];
+				}
+			}
+			fft_plan_exec(plan);
+
+            // This is now copying the results of the Fourier transform (the
+            // Fourier transform of P) into the P pointer. The P pointer is a
+            // just a pointer to a particular location in the worksapce array.
+			for(int j = 0; j < n; ++j){
+				for(int i = 0; i < n; ++i){
+                    // Get indices of lattice points in Fourier space
+					int f[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
+                    // Shift so everything its indexed from 0
+                    // std::cout << "before f[0]: " << f[0] << "\n";
+                    // std::cout << "before f[1]: " << f[1] << "\n";
+					if(f[0] < 0){ f[0] += ngrid[0]; }
+					if(f[1] < 0){ f[1] += ngrid[1]; }
+                    // std::cout << "after f[0]: " << f[0] << "\n";
+                    // std::cout << "after f[1]: " << f[1] << "\n";
+                    // std::cout << "P index> " << Erow+i+(Ecol+j)*n2 << "\n";
+					N[Erow+i+(Ecol+j)*n2] = ing2 * Fto[f[1]+f[0]*ngrid[1]];
+// #ifdef DUMP_MATRICES
+//                     DUMP_STREAM << "P:" << std::endl;
+//                     RNP::IO::PrintMatrix(n2,n2,P,n2, DUMP_STREAM) << std::endl << std::endl;
+// #endif
 				}
 			}
 		}
-        // The x and y components of the vector field at each point are stored
-        // adjacent to one another in vfield,
-
-		fft_plan_destroy(plan);
-
-		if(NULL != vfield){ S4_free(vfield); }
-		// Add to cache
-		//Simulation_AddFieldToCache((S4_Simulation*)S, L, S->n_G, P, 4*nn);
-	}else{
-		// P contains the cached version
-		// We still need temporary space to compute -Delta
-		work = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*2*nn);
-		mDelta = work;
-		Eta = mDelta + nn;
-	}
-
-	// Generate the Fourier matrix of epsilon^{-1}. See eqns 6,7,8 of paper
-	for(int j = 0; j < n; ++j){
-		for(int i = 0; i < n; ++i){
-			int dG[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
-			double f[2] = {
-				dG[0] * S->Lk[0] + dG[1] * S->Lk[2],
-				dG[0] * S->Lk[1] + dG[1] * S->Lk[3]
-				};
-			double sigma = 1.;
-			if(S->options.use_Lanczos_smoothing){
-				sigma = GetLanczosSmoothingFactor(mp1, pwr, f);
-			}
-			double ft[2];
-			Pattern_GetFourierTransform(&L->pattern, ivalues, f, ndim, unit_cell_size, ft);
-			Eta[i+j*n] = sigma * std::complex<double>(ft[0],ft[1]);
-		}
-	}
-
-#ifdef DUMP_MATRICES
-        DUMP_STREAM << "Eta:" << std::endl;
-        RNP::IO::PrintMatrix(n,n,Eta,n, DUMP_STREAM) << std::endl << std::endl;
-#endif
-    if(NULL == W && pnotcached){
+        // Construct Eta
+        for(int j = 0; j < n; ++j){
+            for(int i = 0; i < n; ++i){
+                int dG[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
+                double f[2] = {
+                    dG[0] * S->Lk[0] + dG[1] * S->Lk[2],
+                    dG[0] * S->Lk[1] + dG[1] * S->Lk[3]
+                    };
+                double sigma = 1.;
+                if(S->options.use_Lanczos_smoothing){
+                    sigma = GetLanczosSmoothingFactor(mp1, pwr, f);
+                }
+                double ft[2];
+                Pattern_GetFourierTransform(&L->pattern, ivalues, f, ndim, unit_cell_size, ft);
+                Eta[i+j*n] = sigma * std::complex<double>(ft[0],ft[1]);
+            }
+        }
         // First construct eta_inv
         // Allocate memory for eta^-1 and set it to the identity
         std::complex<double> *eta_inv = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n*n);
@@ -337,33 +378,62 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         // Then lets construct \hat{N}. This is the Fourier space
         // representation of the operator that projects onto the direction
         // normal to material interfaces
-        std::complex<double> *N;
-        N = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
         // Zero out the matrix
-        RNP::TBLAS::SetMatrix<'A'>(n2,n2, std::complex<double>(0.), std::complex<double>(0.), N, n2);
-        double arg = -2*M_PI/n;
-        std::complex<double> omega = std::complex<double>(cos(arg), sin(arg));
-        // First we need to set the top left and bottom right N_GxN_G blocks of
-        // N to the N_GxN_G DFT matrix
-        for(size_t j = 0; j < n; ++j){
-            for(size_t i = 0; i < n; ++i){
-                // Top left block
-                N[j+i*n2] = std::pow(omega, i*j);
-                // Bottom right block
-                N[n+i+(n+j)*n2] = std::pow(omega, i*j);
-            }
-        }
+        // RNP::TBLAS::SetMatrix<'A'>(n2,n2, std::complex<double>(0.), std::complex<double>(0.), N, n2);
 
-#ifdef DUMP_MATRICES
-        DUMP_STREAM << "N:" << std::endl;
-        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
-#endif
+        // double arg = -2*M_PI/n;
+        // std::complex<double> omega = std::complex<double>(cos(arg), sin(arg));
+
+        // First we need to create the DFT matrix
+        // Set Ffrom to the identity
+        // RNP::TBLAS::SetMatrix<'A'>(ngrid[0],ngrid[1], std::complex<double>(0.), std::complex<double>(1.), Ffrom, ngrid[1]);
+// #ifdef DUMP_MATRICES
+        //     DUMP_STREAM << "Ffrom:" << std::endl;
+        //     RNP::IO::PrintMatrix(ngrid[0],ngrid[1],Ffrom,ngrid[0], DUMP_STREAM) << std::endl << std::endl;
+// #endif
+        // // Take the FFT
+        // fft_plan_exec(plan);
+// #ifdef DUMP_MATRICES
+        //     DUMP_STREAM << "Fto:" << std::endl;
+        //     RNP::IO::PrintMatrix(ngrid[0],ngrid[1],Fto,ngrid[0], DUMP_STREAM) << std::endl << std::endl;
+// #endif
+        // // set the top left and bottom right N_GxN_G blocks of
+        // // now fill the top left and bottom right blocks of N using the
+        // // ordering convention set by S4
+        // for(int j = 0; j < n; ++j){
+        //     for(int i = 0; i < n; ++i){
+        //         // Get indices of lattice points in Fourier space
+        //         int f[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
+        //         // Shift so everything its indexed from 0
+        //         if(f[0] < 0){ f[0] += ngrid[0]; }
+        //         if(f[1] < 0){ f[1] += ngrid[1]; }
+        //         // Top left block
+        //         N[j+i*n2] = ing2 * Fto[f[1]+f[0]*ngrid[1]];
+        //         // Bottom right block
+        //         N[n+i+(n+j)*n2] = ing2 * Fto[f[1]+f[0]*ngrid[1]];
+        //     }
+        // }
+
+        // N to the N_GxN_G DFT matrix
+        // for(size_t j = 0; j < n; ++j){
+        //     for(size_t i = 0; i < n; ++i){
+        //         // Top left block
+        //         N[j+i*n2] = std::pow(omega, i*j);
+        //         // Bottom right block
+        //         N[n+i+(n+j)*n2] = std::pow(omega, i*j);
+        //     }
+        // }
+
+// #ifdef DUMP_MATRICES
+//         DUMP_STREAM << "N:" << std::endl;
+//         RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
+// #endif
         // Now subtract P from it. This loops through each row and treats each row
         // as a vector, computing
-        // N[i,:] = -1*P[i,:] + N[i,:]
-        for(size_t i = 0; i < n2; ++i){
-            RNP::TBLAS::Axpy(n2, std::complex<double>(-1.), &P[0+i*n2], 1, &N[0+i*n2], 1);
-        }
+        // N[i,:] = -1*P[i,:] + N[i,:] 
+        // for(size_t i = 0; i < n2; ++i){
+        //     RNP::TBLAS::Axpy(n2, std::complex<double>(-1.), &P[0+i*n2], 1, &N[0+i*n2], 1);
+        // }
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "N:" << std::endl;
         RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
@@ -413,7 +483,38 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         S4_free(N);
         S4_free(eta_inv);
         S4_free(W);
-    }
+        // The x and y components of the vector field at each point are stored
+        // adjacent to one another in vfield,
+		fft_plan_destroy(plan);
+
+		if(NULL != vfield){ S4_free(vfield); }
+		if(NULL != vfield){ S4_free(nvfield); }
+	}else{
+		// P contains the cached version
+		// We still need temporary space to compute -Delta
+		work = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*2*nn);
+		mDelta = work;
+		Eta = mDelta + nn;
+        // Generate the Fourier matrix of epsilon^{-1}. See eqns 6,7,8 of paper
+        for(int j = 0; j < n; ++j){
+            for(int i = 0; i < n; ++i){
+                int dG[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
+                double f[2] = {
+                    dG[0] * S->Lk[0] + dG[1] * S->Lk[2],
+                    dG[0] * S->Lk[1] + dG[1] * S->Lk[3]
+                    };
+                double sigma = 1.;
+                if(S->options.use_Lanczos_smoothing){
+                    sigma = GetLanczosSmoothingFactor(mp1, pwr, f);
+                }
+                double ft[2];
+                Pattern_GetFourierTransform(&L->pattern, ivalues, f, ndim, unit_cell_size, ft);
+                Eta[i+j*n] = sigma * std::complex<double>(ft[0],ft[1]);
+            }
+        }
+	}
+
+
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "Eta:" << std::endl;
         RNP::IO::PrintMatrix(n,n,Eta,n, DUMP_STREAM) << std::endl << std::endl;
