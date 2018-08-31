@@ -97,7 +97,10 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 	std::complex<double> *work = NULL;
 	std::complex<double> *mDelta = NULL;
 	std::complex<double> *Eta = NULL;
-	if(NULL == P){
+    int pnotcached = NULL == P;
+    int ng2;
+    double ing2;
+	if(pnotcached){
 		// We need to compute the vector field
 
 		// Make vector fields
@@ -128,7 +131,9 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 			}
 		}
         // Number of real space grid points
-		const int ng2 = ngrid[0]*ngrid[1];
+		ng2 = ngrid[0]*ngrid[1];
+        std::cout << "ngrid[0]: " << ngrid[0] << std::endl;
+        std::cout << "ngrid[1]: " << ngrid[1] << std::endl;
 	
         // Memory workspace array. N = number of basis terms, nn = N^2, ng = number of
         // real space grid points for vector field. Has length 6N^2 + 4*ng 
@@ -137,8 +142,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
         // mDelta is an NxN matrix
         // mDelta = work[0:N^2]
 		mDelta = work;
-        // Eta is and NxN matrix
-        // Eta = work[N^2:2N^2]
+        // Eta is        // Eta = work[N^2:2N^2]
 		Eta = mDelta + nn;
         std::complex<double> *N;
         N = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
@@ -159,7 +163,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 		std::complex<double> *normpar = par + ng2; // real space normal vector
 
 		// Generate the vector field
-		const double ing2 = 1./(double)ng2;
+		ing2 = 1./(double)ng2;
 		int ii[2];
 
         // Creates workspace for the vector field. The vector field in general
@@ -268,7 +272,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 		}
 
 
-		fft_plan plan = fft_plan_dft_2d(ngrid, Ffrom, Fto, 1);
+		fft_plan plan = fft_plan_dft_2d(ngrid, Ffrom, Fto, -1);
 
 		// We fill in the quarter blocks of F in Fortran order
 		for(int w = 0; w < 4; ++w){
@@ -375,59 +379,18 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
             DUMP_STREAM << "eta_inv:" << std::endl;
             RNP::IO::PrintMatrix(n,n,eta_inv,n, DUMP_STREAM) << std::endl << std::endl;
 #endif
-        // Then lets construct \hat{N}. This is the Fourier space
-        // representation of the operator that projects onto the direction
-        // normal to material interfaces
-        // Zero out the matrix
-        // RNP::TBLAS::SetMatrix<'A'>(n2,n2, std::complex<double>(0.), std::complex<double>(0.), N, n2);
-
-        // double arg = -2*M_PI/n;
-        // std::complex<double> omega = std::complex<double>(cos(arg), sin(arg));
-
-        // First we need to create the DFT matrix
-        // Set Ffrom to the identity
-        // RNP::TBLAS::SetMatrix<'A'>(ngrid[0],ngrid[1], std::complex<double>(0.), std::complex<double>(1.), Ffrom, ngrid[1]);
-// #ifdef DUMP_MATRICES
-        //     DUMP_STREAM << "Ffrom:" << std::endl;
-        //     RNP::IO::PrintMatrix(ngrid[0],ngrid[1],Ffrom,ngrid[0], DUMP_STREAM) << std::endl << std::endl;
-// #endif
-        // // Take the FFT
-        // fft_plan_exec(plan);
-// #ifdef DUMP_MATRICES
-        //     DUMP_STREAM << "Fto:" << std::endl;
-        //     RNP::IO::PrintMatrix(ngrid[0],ngrid[1],Fto,ngrid[0], DUMP_STREAM) << std::endl << std::endl;
-// #endif
-        // // set the top left and bottom right N_GxN_G blocks of
-        // // now fill the top left and bottom right blocks of N using the
-        // // ordering convention set by S4
-        // for(int j = 0; j < n; ++j){
-        //     for(int i = 0; i < n; ++i){
-        //         // Get indices of lattice points in Fourier space
-        //         int f[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
-        //         // Shift so everything its indexed from 0
-        //         if(f[0] < 0){ f[0] += ngrid[0]; }
-        //         if(f[1] < 0){ f[1] += ngrid[1]; }
-        //         // Top left block
-        //         N[j+i*n2] = ing2 * Fto[f[1]+f[0]*ngrid[1]];
-        //         // Bottom right block
-        //         N[n+i+(n+j)*n2] = ing2 * Fto[f[1]+f[0]*ngrid[1]];
-        //     }
-        // }
-
-        // N to the N_GxN_G DFT matrix
-        // for(size_t j = 0; j < n; ++j){
-        //     for(size_t i = 0; i < n; ++i){
-        //         // Top left block
-        //         N[j+i*n2] = std::pow(omega, i*j);
-        //         // Bottom right block
-        //         N[n+i+(n+j)*n2] = std::pow(omega, i*j);
-        //     }
-        // }
-
-// #ifdef DUMP_MATRICES
-//         DUMP_STREAM << "N:" << std::endl;
-//         RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
-// #endif
+        // Then lets construct \hat{N}. This is the operator that projects onto the
+        // direction normal to a material interface, and is just I - P
+        std::complex<double> *N;
+        // std::complex<double> diag = std::complex<double>(1.0*n);
+        std::complex<double> diag = std::complex<double>(1.0);
+        N = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
+        // Set N to the identity first
+        RNP::TBLAS::SetMatrix<'A'>(n2, n2, std::complex<double>(0.), diag, N, n2);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "N:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
+#endif
         // Now subtract P from it. This loops through each row and treats each row
         // as a vector, computing
         // N[i,:] = -1*P[i,:] + N[i,:] 
