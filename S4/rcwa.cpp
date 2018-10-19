@@ -2229,9 +2229,9 @@ void GetFieldAtPointImproved(
     // START HERE
     // 1) I need to get access to Epsilon2, and use it to extract the fourier
     //    coefficients of dx, dy by multiplying it with [-ey ex]. In other words
-    //    [-dy dx] = Epsilon2 [-ey ex].
-    // 2) I then use P to project onto tangential basis, and I - P to project onto
-    //    normal basis.
+    //    [-dy dx] = Epsilon2 [-ey ex]. 
+    // 2) I then use P to project onto normal basis, and I - P to project onto
+    //    tangential basis.
 	const std::complex<double> *hx  = &eh[3*n2+0];
     const std::complex<double> *hy  = &eh[3*n2+n];
 	const std::complex<double> *ney = &eh[4*n2+0];
@@ -2248,8 +2248,8 @@ void GetFieldAtPointImproved(
 
     // So the equations look like this:
     // [-d_{n,y} d_{n,x}] = W [-ey ex]
-    // \hat{N} = I - P
-    // [-e_{t,y} e_{t,x}] = P [-ey, ex]
+    // \hat{T} = I - P
+    // [-e_{t,y} e_{t,x}] = T [-ey, ex]
     // Remeber P is NULL for unpatterned layers, and we don't need to use this
     // procedure for unpatterned layers anyway!
     std::complex<double> *dn_and_et = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 2*n2);
@@ -2274,8 +2274,35 @@ void GetFieldAtPointImproved(
         DUMP_STREAM << "Dnormal:" << std::endl;
         RNP::IO::PrintVector(n2,dn_and_et,1,DUMP_STREAM) << std::endl << std::endl;
 #endif
+        // Then lets construct \hat{T}. This is the operator that projects onto the
+        // direction tangential to a material interface, and is just I - P
+        std::complex<double> *T;
+        // std::complex<double> diag = std::complex<double>(1.0*n);
+        std::complex<double> diag = std::complex<double>(1.0);
+        T = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n2*n2);
+        // Set T to the identity first
+        RNP::TBLAS::SetMatrix<'A'>(n2, n2, std::complex<double>(0.), diag, T, n2);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "T:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Now subtract P from it. This loops through each row and treats each row
+        // as a vector, computing
+        // T[i,:] = -1*P[i,:] + T[i,:]
+        for(size_t i = 0; i < n2; ++i){
+            RNP::TBLAS::Axpy(n2, std::complex<double>(-1.), &P[0+i*n2], 1, &T[0+i*n2], 1);
+        }
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "T:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,T,n2, DUMP_STREAM) << std::endl << std::endl;
+        /* DUMP_STREAM << "Epsilon_inv:" << std::endl; */
+        /* RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl; */
+#endif
+        // Now we compute the matrix product of N and Epsilon2 and store it in
+        // the memory space of N
+        /* RNP::TBLAS::MultMM<'N','N'>(n2,n2,n2, std::complex<double>(1.),N,n2,Epsilon2,n2,std::complex<double>(0.),N,n2); */
         // Now etangential
-        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,P,n2,&eh[4*n2],1, z_zero,&dn_and_et[n2],1);
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,T,n2,&eh[4*n2],1, z_zero,&dn_and_et[n2],1);
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "Etangential:" << std::endl;
         RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;
@@ -2434,8 +2461,8 @@ void GetFieldOnGridImproved(
 
     // So the equations look like this:
     // [-d_{n,y} d_{n,x}] = W [-ey ex]
-    // \hat{N} = I - P
-    // [-e_{t,y} e_{t,x}] = P [-ey, ex]
+    // \hat{T} = I - P
+    // [-e_{t,y} e_{t,x}] = T [-ey, ex]
     // Remeber P is NULL for unpatterned layers, and we don't need to use this
     // procedure for unpatterned layers anyway!
     std::complex<double> *dn_and_et = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 2*n2);
@@ -2460,8 +2487,32 @@ void GetFieldOnGridImproved(
         DUMP_STREAM << "Dnormal:" << std::endl;
         RNP::IO::PrintVector(n2,dn_and_et,1,DUMP_STREAM) << std::endl << std::endl;
 #endif
+        // Then lets construct \hat{T}. This is the operator that projects onto the
+        // direction tangential to a material interface, and is just I - P
+        std::complex<double> *T;
+        // std::complex<double> diag = std::complex<double>(1.0*n);
+        std::complex<double> diag = std::complex<double>(1.0);
+        T = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n2*n2);
+        // Set T to the identity first
+        RNP::TBLAS::SetMatrix<'A'>(n2, n2, std::complex<double>(0.), diag, T, n2);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "T:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Now subtract P from it. This loops through each row and treats each row
+        // as a vector, computing
+        // T[i,:] = -1*P[i,:] + T[i,:]
+        for(size_t i = 0; i < n2; ++i){
+            RNP::TBLAS::Axpy(n2, std::complex<double>(-1.), &P[0+i*n2], 1, &T[0+i*n2], 1);
+        }
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "T:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,T,n2, DUMP_STREAM) << std::endl << std::endl;
+        /* DUMP_STREAM << "Epsilon_inv:" << std::endl; */
+        /* RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl; */
+#endif
         // Now etangential
-        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,P,n2,&eh[4*n2],1, z_zero,&dn_and_et[n2],1);
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,T,n2,&eh[4*n2],1, z_zero,&dn_and_et[n2],1);
 #ifdef DUMP_MATRICES
         DUMP_STREAM << "Etangential:" << std::endl;
         RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;

@@ -407,7 +407,7 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 
         // Compute the thing inside the parenthesis in eqn 9a of Weismanns
         // paper (I call it W) and store it in the memory space of W
-        // This is looping through blocks of the matrix N (2Nx2N) and
+        // This is looping through blocks of the matrix P (2Nx2N) and
         // multiplying each sub-block by eta_inv (NxN) independently. w
         // indexes the block.
         /* std::complex<double> *W; */
@@ -425,11 +425,11 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
             // Computes C := alpha*A*B + beta*C
             // We'll do the first term first, which means right multiplying by eta_inv.
             // We don't add the contents of Ncombo here because its empty
-            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),&N[Erow+Ecol*n2],n2,eta_inv,n,std::complex<double>(0),&W[Erow+Ecol*n2],n2);
+            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),&P[Erow+Ecol*n2],n2,eta_inv,n,std::complex<double>(0),&W[Erow+Ecol*n2],n2);
             // Now do the second term, which means left multiplying by
             // eta_inv. Now we _do_ add the contents of Ncombo, bcause it
             // already contains the first term
-            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),eta_inv,n,&N[Erow+Ecol*n2],n2,std::complex<double>(1.),&W[Erow+Ecol*n2],n2);
+            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),eta_inv,n,&P[Erow+Ecol*n2],n2,std::complex<double>(1.),&W[Erow+Ecol*n2],n2);
         }
 
 #ifdef DUMP_MATRICES
@@ -443,7 +443,6 @@ int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const in
 		// Add to cache
 		Simulation_AddFieldToCache((Simulation*)S, L, S->n_G, P, 4*nn, W, 4*nn);
         // Now free up all the memory we just allocated
-        S4_free(N);
         S4_free(eta_inv);
         S4_free(W);
         // The x and y components of the vector field at each point are stored
