@@ -2307,9 +2307,9 @@ void GetFieldAtPointImproved(
         DUMP_STREAM << "Etangential:" << std::endl;
         RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;
 #endif
-        if(NULL != T){
-            rcwa_free(T);
-        }
+    if(NULL != T){
+        rcwa_free(T);
+    }
     }
     if(NULL != efield && NULL != epsilon_inv){
         // This is setting up the left side of equation 11 of the paper and
@@ -2378,9 +2378,6 @@ void GetFieldAtPointImproved(
     }
     if(NULL != dn_and_et){
         rcwa_free(dn_and_et);
-    }
-    if(NULL != T){
-        rcwa_free(T);
     }
 }
 
@@ -2520,6 +2517,9 @@ void GetFieldOnGridImproved(
         DUMP_STREAM << "Etangential:" << std::endl;
         RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;
 #endif
+        if(NULL != T){
+            rcwa_free(T);
+        }
     }
 
     // Here is where we populate the matrices of fourier coefficients that we
@@ -2586,9 +2586,6 @@ void GetFieldOnGridImproved(
 		fft_free(from[i]);
 	}
 	rcwa_free(eh);
-    if(NULL != T){
-        rcwa_free(T);
-    }
 }
 
 void GetFieldOnGrid(
