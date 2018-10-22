@@ -2379,6 +2379,9 @@ void GetFieldAtPointImproved(
     if(NULL != dn_and_et){
         rcwa_free(dn_and_et);
     }
+    if(NULL != T){
+        rcwa_free(T);
+    }
 }
 
 void GetFieldOnGridImproved(
@@ -2583,6 +2586,9 @@ void GetFieldOnGridImproved(
 		fft_free(from[i]);
 	}
 	rcwa_free(eh);
+    if(NULL != T){
+        rcwa_free(T);
+    }
 }
 
 void GetFieldOnGrid(
