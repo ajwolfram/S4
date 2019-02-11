@@ -325,8 +325,11 @@ void SolveLayerEigensystem(
 	const size_t n2 = 2*n;
 
 	if((size_t)-1 == lwork){
-		RNP::Eigensystem(n2, NULL, n2, q, NULL, 1, phi, n2, work_, NULL, lwork);
-		work_[0] += n2*n2;
+     //M.P. (Michael Povolotskyi) Bellow I have to mimic the instructions from RNP::Eigensystem in file Eigensystems.cpp
+     // because MKL lapack cannot handle NULL pointer for the matrix
+     //	RNP::Eigensystem(n2, NULL, n2, q, NULL, 1, phi, n2, work_, NULL, lwork); //M.P
+	     	work_[0] = double(2*n2); //M.P.
+     		work_[0] += n2*n2;
 		return;
 	}else if(0 == lwork){
 		lwork = n2*n2+2*n2;
@@ -336,7 +339,9 @@ void SolveLayerEigensystem(
 	size_t eigenlwork;
 	if(NULL == work_ || lwork < n2*n2+2*n2){
 		lwork = (size_t)-1;
-		RNP::Eigensystem(n2, NULL, n2, q, NULL, 1, phi, n2, q, NULL, lwork);
+      //M.P. Same as above 
+      //	RNP::Eigensystem(n2, NULL, n2, q, NULL, 1, phi, n2, q, NULL, lwork); //M.P.
+		q[0] = (double)(2*n2); //M.P
 		eigenlwork = (size_t)q[0].real();
 		work = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>)*(eigenlwork + n2*n2));
 	}else{
