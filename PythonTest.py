@@ -49,7 +49,7 @@ S.SetOptions(
     PolarizationDecomposition = True
 )
 
-wavelength_um = float(wavelength_p_nm)/1000; # [8.0,14.0]
+wavelength_um = 1;
 freq = 1 / float(wavelength_um);  
 S.SetFrequency(freq)  #unit 2*pi*c_const / a
 forward,backward = S.GetPowerFlux(Layer = 'AirAbove', zOffset = 0) # reflected power
