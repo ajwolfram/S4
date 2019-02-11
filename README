@@ -8,3 +8,8 @@ See the S4 manual, in doc/index.html, for a complete
 description of the package and its user interface, as well as
 installation instructions, the license and copyright, contact
 addresses, and other important information.
+
+sajidmc: The MakefileHPC is created to compile the S4 in HPC environment without
+root access. Also added an example for python extension testing: 
+
+![Example script](https://raw.githubusercontent.com/sajidmc/S4/master/examples/bontempi_et_al_Nanoscale_2017.png)
