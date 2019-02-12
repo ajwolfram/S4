@@ -7,6 +7,9 @@
 import S4
 import numpy as np
 import matplotlib.pyplot as plt
+import time
+
+t = time.time()
 
 a = 1e-6; #1nm
 c_const = 3e8;
@@ -56,13 +59,13 @@ forward,backward = S.GetPowerFlux(Layer = 'AirAbove', zOffset = 0) # reflected p
 forward = S.GetPowerFlux(Layer = 'AirBelow',zOffset = 0)
 print('f='+str(1/freq)+', Power_forward= '+str(forward[0].real)+', Power_backward='+str(backward.real))
 
-# get fields at points
-
+# output POV file
+S.OutputStructurePOVRay(Filename = 'output_PythonTest.pov')
 
 
 
 # frequency sweep
-wavelength_space = np.linspace(1.3, 1.7, 200)
+wavelength_space = np.linspace(1.3, 1.7, 100)
 
 R = wavelength_space * 0
 T=R
@@ -89,8 +92,8 @@ wavelength_p_nm = 1400;
 wavelength_um = float(wavelength_p_nm)/1000; # [8.0,14.0]
 freq = 1 / float(wavelength_um);  
 S.SetFrequency(freq)  #unit 2*pi*c_const / a
-x_space = np.linspace(-p/2,p/2,300)
-z_space = np.linspace(0.8,1.4,300)
+x_space = np.linspace(-p/2,p/2,200)
+z_space = np.linspace(0.8,1.4,200)
 
 X,Z = np.meshgrid(x_space,z_space)
 Ey = np.zeros((X.shape[0], X.shape[1]))
@@ -118,5 +121,6 @@ plt.plot([d/2, d/2], [1, 1+h], color='w', linestyle='-', linewidth=2)
 plt.title('Figure 3(c) - |H|^2 - lam = ' + str(wavelength_p_nm))
 plt.show(block=True)
 
-
+elapsed = time.time()-t;
+print('Elapsed time = '+str(elapsed)+'s')
 print('If you can read this, the configuration work is finished!')
