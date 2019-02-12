@@ -13,4 +13,4 @@ sajidmc: The MakefileHPC is created to compile the S4 in HPC environment without
 root access. Also added an example for python extension testing: 
 
 Check Wiki for details: https://github.com/sajidmc/S4/wiki
-![Example script](https://raw.githubusercontent.com/sajidmc/S4/master/examples/bontempi_et_al_Nanoscale_2017.png)
+Example result: https://raw.githubusercontent.com/sajidmc/S4/master/examples/bontempi_et_al_Nanoscale_2017.png
