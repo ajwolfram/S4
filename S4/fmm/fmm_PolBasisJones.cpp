@@ -330,7 +330,7 @@ int FMMGetEpsilon_PolBasisJones(const Simulation *S, const Layer *L, const int n
 		RNP::TLASupport::LUDecomposition(n2,n2, P,n2, ipiv);
 		
 		// Add to cache (assume that ipiv is immediately after P
-		Simulation_AddFieldToCache((Simulation*)S, L, S->n_G, P, 4*nn+2*n);
+		/* Simulation_AddFieldToCache((Simulation*)S, L, S->n_G, P, 4*nn+2*n); */
 	}else{
 		// P contains the cached version
 		//work = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*2*nn);

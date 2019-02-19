@@ -1063,28 +1063,83 @@ static void GetInPlaneFieldVector(
 	const std::complex<double> *ab, // length 4*glist.n
 	std::complex<double> *eh // length 8*2*glist.n
 ){
+    // ab are the mode amplitudes times the f(z) operators in the column vector
+    // on the bottom row of eqn 35. By the time we enter this function,
+    // TranslateAmplitudes has already been called which does the multiplcation
+    // by the f(z), f(d-z) operators. Those operators are the things that take
+    // the mode amplitudes at each interface and use the
+    // eigenvalues/propagation constants q to find the values of the mode
+    // amplitudes at a particular z coordinate. The array has length 4n. The
+    // forward in the first 2n locations, and the backward mode amplitudes are
+    // stored in the remaining 2n locations. The forward amplitudes are
+    // relative to the front of the layer, while the backward amplitudes are
+    // relative to the back of the layer.
+    // So ab = [f(z)a, f(d-z)b]
+
 	const size_t n2 = 2*n;
 	const size_t n4 = 2*n2;
 	
+    // This is the column vector on the bottom line of eqn 35 by q^-1 and
+    // storing it in eh[8N:12N]. This will be used for computing the top two
+    // blocks of the matrix in eqn 35 
+    // TODO: I don't understand why the omega is in here
 	for(size_t i = 0; i < n2; ++i){
 		eh[4*n2+i] = ab[i]/(omega*q[i]);
 		eh[5*n2+i] = -ab[i+n2]/(omega*q[i]);
 	}
+    // This copies the array ab, which is of length 4n, to the 12N-th element
+    // of eh. eh is only 16N elements long, so this takes up the last section
+    // of space in the array. At this point eh[8N:16N] = [f(z)a/q -f(d-z)b/q
+    // f(z)a f(d-z)b]. The minus sign in the 2nd section is needed later,
+    // because the top right block of the matrix in eqn 35 has a minus sign. 
 	RNP::TBLAS::Copy(n4, ab,1, &eh[6*n2],1);
 	if(NULL == phi){
+        // This operation copies eh[8N:16N] (8N elements) to eh[0:8N] (also 8N
+        // elements)
 		RNP::TBLAS::CopyMatrix<'A'>(n2,4, &eh[4*n2],n2, &eh[0],n2);
 	}else{
+        // This computes following matrix op
+        // C := alpha*A*B + beta*C
+        // m = 2N, n = 4, k = 2N
+        // A = phi (m x k)
+        // B = eh[8N:] (k x n)
+        // C = eh[0] (m x n)
+        // alpha = 1, beta = 0
+        // This computes the first step of the operation in eqn 35 and stores
+        // it at the beginning of the eh array eh[0:8N]
 		RNP::TBLAS::MultMM<'N','N'>(n2,4,n2, std::complex<double>(1.),phi,n2, &eh[4*n2],n2, std::complex<double>(0.),&eh[0],n2);
 	}
 	// At this point, the 4 columns of &eh[0] (length n2) are
 	// [ phi.inv(q).a   -phi.inv(q).b   phi.a   phi.b ]
+    // kp = k-parallel matrix
+    // kp = omega^2 - Kappa = omega^2 - [  ky*epsinv*ky -ky*epsinv*kx ]
+    //                                  [ -kx*epsinv*ky  kx*epsinv*kx ]
+    //    = omega^2 + [ -ky ] [ epsinv ] [ ky -kx ]
+    //                [  kx ]
+    // So kp is the thing inside the parentheses in the upper row of the matrix
+    // in equation 35
+    // This function call peforms the matrix multiplication in the top row of
+    // eqn 35. There are 2 "columns" of 2N elements, so the first 4N elements
+    // of eh (see top of comments for contents of eh) get multiplied by the kp matrix
+    // and stored in eh[8N:12N] 
 	MultKPMatrix("N", omega, n, kx, ky, Epsilon_inv, epstype, kp, 2, &eh[0],n2, &eh[4*n2],n2);
+    // Computes eh[4N:6N] + eh[6N:8N] and stores in in eh[6N:8N]. This is
+    // adding the two bottom blocks of eqn 35 together after multiplication to
+    // get the hx and hy components
 	RNP::TBLAS::Axpy(n2, std::complex<double>(1.),&eh[2*n2],1, &eh[3*n2],1);
+    // Computes eh[10N:12N] + eh[8N:10N] and stores it in eh[8N:10N]. This is
+    // just adding the two top blocks in eqn 35 together after all the
+    // M
+    // multiplication to get the -ey and ex components
 	RNP::TBLAS::Axpy(n2, std::complex<double>(1.),&eh[5*n2],1, &eh[4*n2],1);
 	/*
+    // hx = eh[6N:7N]
 	const std::complex<double> *hx  = &eh[3*n2+0];
+    // hy = eh[7N:8N]
 	const std::complex<double> *hy  = &eh[3*n2+n];
+    // -ey = eh[8N:9N]
 	const std::complex<double> *ney = &eh[4*n2+0];
+    // ex = eh[9N:10N]
 	const std::complex<double> *ex  = &eh[4*n2+n];
 	*/
 }
@@ -1105,21 +1160,35 @@ void GetFieldAtPoint(
 	std::complex<double> hfield[3],
 	std::complex<double> *work // 8*n2
 ){
+    // This is just a way of instantiating 1 with a complex number type, and 0
+    // with a complex number type, which I think is necessary for type
+    // compatibility and whatnot with all the lapack functions.
 	const std::complex<double> z_zero(0.);
 	const std::complex<double> z_one(1.);
 	const size_t n2 = 2*n;
 	
+    // This is the memory workspace for the fourier coeffs of the fields. Its
+    // of length 16*N
 	std::complex<double> *eh = work;
 	if(NULL == work){
 		eh = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 8*n2);
 	}
 	
+    // This is the function I need to modify. Right now it puts ex, ey, hx, hy
+    // inside eh (i.e the fourier coefficients of the transverse field
+    // components). I need to get at the fourier coefficients of d_normal and
+    // e_tangential and return them, then use the code below to get the real
+    // space reconstructions
 	GetInPlaneFieldVector(n, kx, ky, omega, q, epsilon_inv, epstype, kp, phi, ab, eh);
+    // So eh contains the fourier coefficients of hx, hy, -ey and ex. This code
+    // below sets up pointers to the various continous chunks of the array that
+    // contain the relevant fourier components. Notice the first 6N (3*2*N)
+    // elements of the array are skipped.  
 	const std::complex<double> *hx  = &eh[3*n2+0];
 	const std::complex<double> *hy  = &eh[3*n2+n];
 	const std::complex<double> *ney = &eh[4*n2+0];
 	const std::complex<double> *ex  = &eh[4*n2+n];
-	
+
 	std::complex<double> fE[3], fH[3];
 	fE[0] = 0;
 	fE[1] = 0;
@@ -1129,26 +1198,47 @@ void GetFieldAtPoint(
 	fH[2] = 0;
 	
 	if(NULL != efield && NULL != epsilon_inv){
+        // This is setting up the left side of equation 11 of the paper and
+        // storing in the first N elements of the eh array
 		for(size_t i = 0; i < n; ++i){
 			eh[i] = (ky[i]*hx[i] - kx[i]*hy[i]);
 		}
+        // This multiplies epsilon_inv by eh[0:N] and copies it into the
+        // memory space of eh[N:2N]. Looking at equation 11 of the paper, you
+        // can see after setting up the left size we still need to multiply it
+        // by \hat{\epsilon}_z^-1. We haven't divided by omega yet, for some
+        // reason that is done in the next loop. I think we could do it by
+        // replaceing epsilon_inv[0] in the Scale call by epsilon_inv[0]/omega
+        // and z_one by 1/omega in the MultMV call. Perhaps there is a reason
+        // the author didn't do it this way
 		if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
 			RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
 			RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
 		}else{
+            // eh[n] = (1+0i) * epsilon_inv*eh + 0 * eh[n]
+            // The 0 * eh[n] part seems silly but it allows us to copy the
+            // result of the first term into eh[n]
 			RNP::TBLAS::MultMV<'N'>(n,n, z_one,epsilon_inv,n, eh,1, z_zero,&eh[n],1);
 		}
 	}
-	
-	for(size_t i = 0; i < n; ++i){
-		const double theta = (kx[i]*r[0] + ky[i]*r[1]);
 
+    // This loop below is basically equation 5 from the paper!!
+	for(size_t i = 0; i < n; ++i){
+        // This is (\vec{k} + \vec{G}) \cdot \vec{x} at each G vector
+		const double theta = (kx[i]*r[0] + ky[i]*r[1]);
+        // This is using Euler's rule to compute e^{i (\vec{k} + \vec{G}) \cdot \vec{x})
 		const std::complex<double> phase(cos(theta),sin(theta));
+        // And this is just where each individual term is added to the total
 		fH[0] += hx[i]*phase;
 		fH[1] += hy[i]*phase;
 		fE[0] += ex[i]*phase;
 		fE[1] -= ney[i]*phase;
+        // These is eqn 14 from the paper. z component of h is expressed in
+        // terms of transverse components of e
 		fH[2] += (kx[i] * -ney[i] - ky[i] * ex[i]) * (phase / omega);
+        // This is the final bit of equation 11 from the paper. We need to
+        // divide by omega to get the fourier coefficients of e_z, then
+        // multiply by phase and sum to get real space resconstruction
 		fE[2] += eh[n+i] * (phase / omega);
 	}
 	
@@ -1167,6 +1257,428 @@ void GetFieldAtPoint(
 		rcwa_free(eh);
 	}
 }
+
+
+void GetFieldAtPointImproved(
+	size_t n, // glist.n
+	const double *kx,
+	const double *ky,
+	std::complex<double> omega,
+	const std::complex<double> *q, // length 2*glist.n
+	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	const std::complex<double> *phi, // size (2*glist.n)^2
+	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL. This is \hat{\eta} in paper notation
+	const std::complex<double> *P, // Projection operator onto tangential. 2nx2n matrix, size 4n^2
+	const std::complex<double> *W, // Weismann operator. 2nx2n matrix, size 4n^2
+	const std::complex<double> *Epsilon2, // curly Epsilon2 matrix (see eqn 51)
+	const std::complex<double> epsilon, // The scalar, real space value of epsilon
+	int epstype,
+	const std::complex<double> *ab, // length 4*glist.n
+	const double r[2], // coordinates within layer
+	std::complex<double> efield[3],
+	std::complex<double> hfield[3],
+	std::complex<double> *work // 8*n2
+){
+    // This is just a way of instantiating 1 with a complex number type, and 0
+    // with a complex number type, which I think is necessary for type
+    // compatibility and whatnot with all the lapack functions.
+	const std::complex<double> z_zero(0.);
+	const std::complex<double> z_one(1.);
+	const size_t n2 = 2*n;
+
+#ifdef DUMP_MATRICES
+    if(NULL != P){
+        DUMP_STREAM << "P:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,P,n2, DUMP_STREAM) << std::endl << std::endl;
+        DUMP_STREAM << "W:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,W,n2, DUMP_STREAM) << std::endl << std::endl;
+    }
+#endif
+#ifdef DUMP_MATRICES
+    if(NULL != W){
+        DUMP_STREAM << "Epsilon2:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,Epsilon2,n2, DUMP_STREAM) << std::endl << std::endl;
+    }
+#endif
+	
+    // This is the memory workspace for the fourier coeffs of the fields. Its
+    // of length 16*N
+	std::complex<double> *eh = work;
+	if(NULL == work){
+		eh = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 8*n2);
+	}
+	
+    // The function below puts ex, ey, hx, hy inside eh (i.e the fourier
+    // coefficients of the transverse field components). I need to get at the
+    // fourier coefficients of d_normal and e_tangential, then use the code
+    // below this function call to get the real space reconstructions
+    // hx = eh[6N:7N]
+    // hy = eh[7N:8N]
+    // -ey = eh[8N:9N]
+    // ex = eh[9N:10N]
+	GetInPlaneFieldVector(n, kx, ky, omega, q, epsilon_inv, epstype, kp, phi, ab, eh);
+    // So eh contains the fourier coefficients of hx, hy, -ey and ex. This code
+    // below sets up pointers to the various continous chunks of the array that
+    // contain the relevant fourier components. Notice the first 6N (3*2*N)
+    // elements of the array are skipped.  
+    // START HERE
+    // 1) I need to get access to Epsilon2, and use it to extract the fourier
+    //    coefficients of dx, dy by multiplying it with [-ey ex]. In other words
+    //    [-dy dx] = Epsilon2 [-ey ex]. 
+    // 2) I then use P to project onto normal basis, and I - P to project onto
+    //    tangential basis.
+	const std::complex<double> *hx  = &eh[3*n2+0];
+    const std::complex<double> *hy  = &eh[3*n2+n];
+	const std::complex<double> *ney = &eh[4*n2+0];
+	const std::complex<double> *ex  = &eh[4*n2+n];
+
+    // Arrays for the real space reconstructions of the 3 field components
+	std::complex<double> fE[3], fH[3];
+	fE[0] = 0;
+	fE[1] = 0;
+	fE[2] = 0;
+	fH[0] = 0;
+	fH[1] = 0;
+	fH[2] = 0;
+
+    // So the equations look like this:
+    // [-d_{n,y} d_{n,x}] = W [-ey ex]
+    // \hat{T} = I - P
+    // [-e_{t,y} e_{t,x}] = T [-ey, ex]
+    // Remeber P is NULL for unpatterned layers, and we don't need to use this
+    // procedure for unpatterned layers anyway!
+    std::complex<double> *dn_and_et = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 2*n2);
+    // These are just some convenience pointers to the various sections of
+    // the dn and et array
+    const std::complex<double> *ndny = &dn_and_et[0];
+    const std::complex<double> *dnx = &dn_and_et[n];
+    const std::complex<double> *nety = &dn_and_et[n2];
+    const std::complex<double> *etx = &dn_and_et[n2+n]; 
+    if(NULL != W){
+        // We now have all we need to get the Fourier coefficients of the
+        // normal component of d and the tangential components of e. I
+        // allocated a new array for the dnormal components and etangential
+        // components. dnormal will be in the first 2N elements, etangential in
+        // the last 2N elements
+        // First dnormal
+        // This is my approach
+        /* RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,N,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1); */
+        // This is Weismann's approach verbatim
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,W,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Dnormal:" << std::endl;
+        RNP::IO::PrintVector(n2,dn_and_et,1,DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Then lets construct \hat{T}. This is the operator that projects onto the
+        // direction tangential to a material interface, and is just I - P
+        std::complex<double> *T;
+        // std::complex<double> diag = std::complex<double>(1.0*n);
+        std::complex<double> diag = std::complex<double>(1.0);
+        T = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n2*n2);
+        // Set T to the identity first
+        RNP::TBLAS::SetMatrix<'A'>(n2, n2, std::complex<double>(0.), diag, T, n2);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "T:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Now subtract P from it. This loops through each row and treats each row
+        // as a vector, computing
+        // T[i,:] = -1*P[i,:] + T[i,:] 
+        for(size_t i = 0; i < n2; ++i){
+            RNP::TBLAS::Axpy(n2, std::complex<double>(-1.), &P[0+i*n2], 1, &T[0+i*n2], 1);
+        }
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "T:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,T,n2, DUMP_STREAM) << std::endl << std::endl;
+        /* DUMP_STREAM << "Epsilon_inv:" << std::endl; */
+        /* RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl; */
+#endif
+        // Now we compute the matrix product of N and Epsilon2 and store it in
+        // the memory space of N
+        /* RNP::TBLAS::MultMM<'N','N'>(n2,n2,n2, std::complex<double>(1.),N,n2,Epsilon2,n2,std::complex<double>(0.),N,n2); */
+        // Now etangential
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,T,n2,&eh[4*n2],1, z_zero,&dn_and_et[n2],1);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Etangential:" << std::endl;
+        RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;
+#endif
+        if(NULL != T){
+            rcwa_free(T);
+        }
+    }
+    if(NULL != efield && NULL != epsilon_inv){
+        // This is setting up the left side of equation 11 of the paper and
+        // storing in the first N elements of the eh array. The goal is to
+        // compute the ez components
+        for(size_t i = 0; i < n; ++i){
+            eh[i] = (ky[i]*hx[i] - kx[i]*hy[i]);
+        }
+        // This multiplies epsilon_inv by eh[0:N] and copies it into the
+        // memory space of eh[N:2N]. Looking at equation 11 of the paper, you
+        // can see after setting up the left size we still need to multiply it
+        // by \hat{\epsilon}_z^-1. We haven't divided by omega yet, for some
+        // reason that is done in the next loop. I think we could do it by
+        // replaceing epsilon_inv[0] in the Scale call by epsilon_inv[0]/omega
+        // and z_one by 1/omega in the MultMV call. Perhaps there is a reason
+        // the author didn't do it this way
+        if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+            RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
+            RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
+        }else{
+            // eh[n] = (1+0i) * epsilon_inv*eh[0:N] + 0 * eh[N]
+            // The 0 * eh[n] part seems silly but it allows us to copy the
+            // result of the first term into eh[n]
+            RNP::TBLAS::MultMV<'N'>(n,n, z_one,epsilon_inv,n, eh,1, z_zero,&eh[n],1);
+        }
+    }
+
+    // This loop below is basically equation 5 from the paper!!
+    for(size_t i = 0; i < n; ++i){
+        // This is (\vec{k} + \vec{G}) \cdot \vec{x} at each G vector
+        const double theta = (kx[i]*r[0] + ky[i]*r[1]);
+        // This is using Euler's rule to compute e^{i (\vec{k} + \vec{G}) \cdot \vec{x})
+        const std::complex<double> phase(cos(theta),sin(theta));
+        // And this is just where each individual term is added to the total
+        fH[0] += hx[i]*phase;
+        fH[1] += hy[i]*phase;
+        if(NULL != P){
+            fE[0] += dnx[i]*(phase/epsilon) + etx[i]*phase;
+            fE[1] -= ndny[i]*(phase/epsilon) + nety[i]*phase;  
+        } else {
+            fE[0] += ex[i]*phase;
+            fE[1] -= ney[i]*phase;
+        }
+        // These is eqn 14 from the paper. z component of h is expressed in
+        // terms of transverse components of e
+        fH[2] += (kx[i] * -ney[i] - ky[i] * ex[i]) * (phase / omega);
+        // This is the final bit of equation 11 from the paper. We need to
+        // divide by omega to get the fourier coefficients of e_z, then
+        // multiply by phase and sum to get real space resconstruction
+        fE[2] += eh[n+i] * (phase / omega);
+    }
+    
+    if(NULL != efield && NULL != epsilon_inv){
+        efield[0] = fE[0];
+        efield[1] = fE[1];
+        efield[2] = fE[2];
+    }
+    if(NULL != hfield){
+        hfield[0] = fH[0];
+        hfield[1] = fH[1];
+        hfield[2] = fH[2];
+    }
+    
+    if(NULL == work){
+        rcwa_free(eh);
+    }
+    if(NULL != dn_and_et){
+        rcwa_free(dn_and_et);
+    }
+}
+
+void GetFieldOnGridImproved(
+	size_t n, // glist.n
+	int *G,
+	const double *kx, const double *ky,
+	std::complex<double> omega,
+	const std::complex<double> *q, // length 2*glist.n
+	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	const std::complex<double> *phi, // size (2*glist.n)^2
+	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL || kp == NULL
+	const std::complex<double> *P, // Projection operator onto tangential. 2nx2n matrix, size 4n^2
+	const std::complex<double> *W, // Weismann operator. 2nx2n matrix, size 4n^2
+	const std::complex<double> *epsilon, // The scalar, real space value of epsilon
+	int epstype,
+	const std::complex<double> *ab, // length 4*glist.n
+	const size_t nxy[2], // number of points per lattice direction
+	std::complex<double> *efield,
+	std::complex<double> *hfield
+){
+	const std::complex<double> z_zero(0.);
+	const std::complex<double> z_one(1.);
+	const size_t n2 = 2*n;
+    // Total # of real space sampling points
+	const size_t N = nxy[0]*nxy[1];
+    // Center of grid in real space
+	const int nxyoff[2] = { (int)(nxy[0]/2), (int)(nxy[1]/2) };
+	int inxy[2] = { (int)nxy[0], (int)nxy[1] };
+	int inxy_rev[2] = { (int)nxy[1], (int)nxy[0] };
+	
+	std::complex<double> *eh = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 8*n2);
+	
+	GetInPlaneFieldVector(n, kx, ky, omega, q, epsilon_inv, epstype, kp, phi, ab, eh);
+	const std::complex<double> *hx  = &eh[3*n2+0];
+	const std::complex<double> *hy  = &eh[3*n2+n];
+	const std::complex<double> *ney = &eh[4*n2+0];
+	const std::complex<double> *ex  = &eh[4*n2+n];
+
+    // This is allocating memory for 6 Fourier transforms of size N (number of
+    // real space grid points requested). This makes sense because there are 3
+    // E field components to compute, and 3 H field components to compute (6
+    // overall)
+    // The two arrays below are arrays of pointers. This means each element in
+    // from/to is a pointer to an entirely new memory space that is allocated
+    // by the fft_alloc_complex function
+	std::complex<double> *from[8];
+	std::complex<double> *to[8];
+	fft_plan plan[8];
+	for(unsigned i = 0; i < 8; ++i){
+		from[i] = fft_alloc_complex(N);
+		to[i] = fft_alloc_complex(N);
+		memset(from[i], 0, sizeof(std::complex<double>) * N);
+        // This is just a function that allocates a struct that "plans" or
+        // configures the Fourier transform. Mainly astruct containing the
+        // pointers to memory space containing real space data (from) and
+        // pointer to the memory space for the results (to)
+		plan[i] = fft_plan_dft_2d(inxy_rev, from[i], to[i], 1);
+	}
+	
+    // This is setting up the left side of equation 11 of the paper and
+    // storing in the first N elements of the eh array
+	for(size_t i = 0; i < n; ++i){
+		eh[i] = (ky[i]*hx[i] - kx[i]*hy[i]);
+	}
+    // This multiplies epsilon_inv by eh[0:N] and copies it into the
+    // memory space of eh[N:2N]. Looking at equation 11 of the paper, you
+    // can see after setting up the left size we still need to multiply it
+    // by \hat{\epsilon}_z^-1. We haven't divided by omega yet, for some
+    // reason that is done in the next loop. I think we could do it by
+    // replaceing epsilon_inv[0] in the Scale call by epsilon_inv[0]/omega
+    // and z_one by 1/omega in the MultMV call. Perhaps there is a reason
+    // the author didn't do it this way
+    if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+        RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
+        RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
+    }else{
+        RNP::TBLAS::MultMV<'N'>(n,n, z_one,epsilon_inv,n, eh,1, z_zero,&eh[n],1);
+    }
+
+    // So the equations look like this:
+    // [-d_{n,y} d_{n,x}] = W [-ey ex]
+    // \hat{T} = I - P
+    // [-e_{t,y} e_{t,x}] = T [-ey, ex]
+    // Remeber P is NULL for unpatterned layers, and we don't need to use this
+    // procedure for unpatterned layers anyway!
+    std::complex<double> *dn_and_et = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 2*n2);
+    // These are just some convenience pointers to the various sections of
+    // the dn and et array
+    const std::complex<double> *ndny = &dn_and_et[0];
+    const std::complex<double> *dnx = &dn_and_et[n];
+    const std::complex<double> *nety = &dn_and_et[n2];
+    const std::complex<double> *etx = &dn_and_et[n2+n]; 
+    if(NULL != W){
+        // We now have all we need to get the Fourier coefficients of the
+        // normal component of d and the tangential components of e. I
+        // allocated a new array for the dnormal components and etangential
+        // components. dnormal will be in the first 2N elements, etangential in
+        // the last 2N elements
+        // First dnormal
+        // This is my approach
+        /* RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,N,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1); */
+        // This is Weismann's approach verbatim
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,W,n2,&eh[4*n2],1, z_zero,&dn_and_et[0],1);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Dnormal:" << std::endl;
+        RNP::IO::PrintVector(n2,dn_and_et,1,DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Then lets construct \hat{T}. This is the operator that projects onto the
+        // direction tangential to a material interface, and is just I - P
+        std::complex<double> *T;
+        // std::complex<double> diag = std::complex<double>(1.0*n);
+        std::complex<double> diag = std::complex<double>(1.0);
+        T = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * n2*n2);
+        // Set T to the identity first
+        RNP::TBLAS::SetMatrix<'A'>(n2, n2, std::complex<double>(0.), diag, T, n2);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "T:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Now subtract P from it. This loops through each row and treats each row
+        // as a vector, computing
+        // T[i,:] = -1*P[i,:] + T[i,:] 
+        for(size_t i = 0; i < n2; ++i){
+            RNP::TBLAS::Axpy(n2, std::complex<double>(-1.), &P[0+i*n2], 1, &T[0+i*n2], 1);
+        }
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "T:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,T,n2, DUMP_STREAM) << std::endl << std::endl;
+        /* DUMP_STREAM << "Epsilon_inv:" << std::endl; */
+        /* RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl; */
+#endif
+        // Now etangential
+        RNP::TBLAS::MultMV<'N'>(n2,n2,z_one,T,n2,&eh[4*n2],1, z_zero,&dn_and_et[n2],1);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Etangential:" << std::endl;
+        RNP::IO::PrintVector(n2,&dn_and_et[n2],1,DUMP_STREAM) << std::endl << std::endl;
+#endif
+        if(NULL != T){
+            rcwa_free(T);
+        }
+    }
+
+    // Here is where we populate the matrices of fourier coefficients that we
+    // are then going to DFT
+	for(size_t i = 0; i < n; ++i){
+        // G just contains indices for the two components of the G vectors. A
+        // pair of these indices defines a point in k-space, and the indices in
+        // this pair are stored adjacent to one another in the G array. So
+        // these are basically just (m, n). The indices run from -Nmax/2 to
+        // Nmax/2 where Nmax is the radius in k-space you get after circular
+        // truncation. 
+		const int iu = G[2*i+0];
+		const int iv = G[2*i+1];
+        // This if block has to do with the shifting of the origin. Is it at
+        // the corner or the center of the unit cell?
+		if(
+			(nxyoff[0] - (int)nxy[0] < iu && iu <= nxyoff[0]) &&
+			(nxyoff[1] - (int)nxy[1] < iv && iv <= nxyoff[1])
+		){
+
+			const int ii = (iu >= 0 ? iu : iu + nxy[0]);
+			const int jj = (iv >= 0 ? iv : iv + nxy[1]);
+            // I think I need to jump in here, and just populate from[3] with
+            // the fourier coefficients of Dnormal,x and Etangential,x  and 
+            // from[4] with the y components
+            // Dnormal_{x,y} inside from[3],from[4] and Etangential_{x,y}
+            // inside from[6],from[7]
+			from[0][ii+jj*nxy[0]] = hx[i];
+			from[1][ii+jj*nxy[0]] = hy[i];
+			from[2][ii+jj*nxy[0]] = (kx[i] * ney[i] + ky[i] * ex[i]) / omega;
+			from[3][ii+jj*nxy[0]] = dnx[i];
+			from[4][ii+jj*nxy[0]] = -ndny[i];
+			from[5][ii+jj*nxy[0]] = eh[n+i] / omega;
+			from[6][ii+jj*nxy[0]] = etx[i];
+			from[7][ii+jj*nxy[0]] = -nety[i];
+		}
+	}
+	
+	for(unsigned i = 0; i < 8; ++i){
+		fft_plan_exec(plan[i]);
+	}
+	
+	for(size_t j = 0; j < nxy[1]; ++j){
+		for(size_t i = 0; i < nxy[0]; ++i){
+            // This is the real space reconstruction 
+			hfield[3*(i+j*nxy[0])+0] = to[0][i+j*nxy[0]];
+			hfield[3*(i+j*nxy[0])+1] = to[1][i+j*nxy[0]];
+			hfield[3*(i+j*nxy[0])+2] = to[2][i+j*nxy[0]];
+            // x component
+			efield[3*(i+j*nxy[0])+0] = to[3][i+j*nxy[0]]/epsilon[i+j*nxy[0]] + to[6][i+j*nxy[0]];
+            // y component
+			efield[3*(i+j*nxy[0])+1] = to[4][i+j*nxy[0]]/epsilon[i+j*nxy[0]] + to[7][i+j*nxy[0]];;
+            // z component
+			efield[3*(i+j*nxy[0])+2] = to[5][i+j*nxy[0]];
+		}
+	}
+
+	for(unsigned i = 0; i < 8; ++i){
+		fft_plan_destroy(plan[i]);
+		fft_free(to[i]);
+		fft_free(from[i]);
+	}
+	rcwa_free(eh);
+}
+
 void GetFieldOnGrid(
 	size_t n, // glist.n
 	int *G,
@@ -1185,7 +1697,9 @@ void GetFieldOnGrid(
 	const std::complex<double> z_zero(0.);
 	const std::complex<double> z_one(1.);
 	const size_t n2 = 2*n;
+    // Total # of real space sampling points
 	const size_t N = nxy[0]*nxy[1];
+    // Center of grid
 	const int nxyoff[2] = { (int)(nxy[0]/2), (int)(nxy[1]/2) };
 	int inxy[2] = { (int)nxy[0], (int)nxy[1] };
 	int inxy_rev[2] = { (int)nxy[1], (int)nxy[0] };
@@ -1210,13 +1724,13 @@ void GetFieldOnGrid(
 	
 	for(size_t i = 0; i < n; ++i){
 		eh[i] = (ky[i]*hx[i] - kx[i]*hy[i]);
-		if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
-			RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
-			RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
-		}else{
-			RNP::TBLAS::MultMV<'N'>(n,n, z_one,epsilon_inv,n, eh,1, z_zero,&eh[n],1);
-		}
 	}
+    if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+        RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
+        RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
+    }else{
+        RNP::TBLAS::MultMV<'N'>(n,n, z_one,epsilon_inv,n, eh,1, z_zero,&eh[n],1);
+    }
 	for(size_t i = 0; i < n; ++i){
 		const int iu = G[2*i+0];
 		const int iv = G[2*i+1];

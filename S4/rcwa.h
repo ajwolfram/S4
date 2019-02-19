@@ -329,6 +329,8 @@ int SolveInterior(
 // =======
 // Transforms a mode amplitude vector from SolveInterior to a
 // particular z-coordinate within the layer.
+// THIS MODIFIES THE POINTER ab. ALWAYS PASS IN A COPY TO RETAIN SOLUTION
+// AMPLITUDES
 //
 // Arguments
 // =========
@@ -461,6 +463,43 @@ void GetFieldAtPoint(
 	std::complex<double> efield[3],
 	std::complex<double> hfield[3],
 	std::complex<double> *work = NULL
+);
+void GetFieldAtPointImproved(
+	size_t n, // glist.n
+	const double *kx, const double *ky,
+	std::complex<double> omega,
+	const std::complex<double> *q, // length 2*glist.n
+	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	const std::complex<double> *phi, // size (2*glist.n)^2
+	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL || kp == NULL
+	const std::complex<double> *P, // the projection operator that project cartesian fields onto local basis
+	const std::complex<double> *W, // the Weismann operator from eqn 9a in his paper. Same shape as P
+	const std::complex<double> *Epsilon2, // the projection operator that project cartesian fields onto local basis
+	const std::complex<double> epsilon, // The scalar, real space value of epsilon
+	int epstype,
+	const std::complex<double> *ab, // length 4*glist.n
+	const double r[2], // coordinates within layer
+	std::complex<double> efield[3],
+	std::complex<double> hfield[3],
+	std::complex<double> *work = NULL
+);
+void GetFieldOnGridImproved(
+	size_t n, // glist.n
+	int *G, // length 2*glist.n, pairs of uv coordinates of Lk
+	const double *kx, const double *ky,
+	std::complex<double> omega,
+	const std::complex<double> *q, // length 2*glist.n
+	const std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	const std::complex<double> *phi, // size (2*glist.n)^2
+	const std::complex<double> *epsilon_inv, // size (glist.n)^2, non NULL for efield != NULL || kp == NULL
+	const std::complex<double> *P, // Projection operator onto tangential. 2nx2n matrix, size 4n^2
+	const std::complex<double> *W, // Weismann operator. 2nx2n matrix, size 4n^2
+	const std::complex<double> *epsilon, // The scalar, real space value of epsilon
+	int epstype,
+	const std::complex<double> *ab, // length 4*glist.n
+	const size_t nxy[2], // number of points per lattice direction
+	std::complex<double> *efield,
+	std::complex<double> *hfield
 );
 void GetFieldOnGrid(
 	size_t n, // glist.n

@@ -159,11 +159,16 @@ typedef struct Options_{
 	// be stored in memory when possible.
 	int use_less_memory;
 
+    // Use Weismann's improved formulation for the fields
+    int use_weismann_formulation;
+
 	double lanczos_smoothing_width;
 	int lanczos_smoothing_power;
 } Options;
 
 typedef struct Solution_{
+    int n_G;
+    int layer_count;
 	int *G; // length 2*n_G; uv coordinates of Lk
 	void **layer_bands;    // opaque pointer to the layer band structure
 	void **layer_solution; // opaque pointer to the layer solution vector
@@ -242,11 +247,11 @@ void Simulation_Init(Simulation *S);
 void Simulation_Destroy(Simulation *S);
 void Simulation_Clone(const Simulation *S, Simulation *T);
 
+// Destroys the solution belonging to a given simulation and sets
+// S->solution to NULL.
 void Simulation_DestroySolution(Simulation *S);
 void Simulation_DestroyLayerSolutions(Simulation *S);
 
-// Destroys the solution belonging to a given simulation and sets
-// S->solution to NULL.
 
 ///////////////// Simulation parameter specifications /////////////////
 // These will invalidate any existing partially computed solutions.
@@ -306,7 +311,14 @@ int Simulation_MakeExcitationDipole(Simulation *S, const double k[2], const char
 // Field cache manipulation
 void Simulation_InvalidateFieldCache(Simulation *S);
 std::complex<double>* Simulation_GetCachedField(const Simulation *S, const Layer *layer);
-void Simulation_AddFieldToCache(Simulation *S, const Layer *layer, size_t n, const std::complex<double> *P, size_t Plen);
+std::complex<double>* Simulation_GetCachedW(const Simulation *S, const Layer *layer);
+void Simulation_AddFieldToCache(Simulation *S, const Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
+                                const std::complex<double> *W, size_t Wlen);
+// Serializes the Solution struct and saves it to disk using Boost serialize
+// functionality
+int Simulation_SaveSolution(const Simulation *S, const char*);
+// Loads the serialized solution from disk using Boost serialize 
+int Simulation_LoadSolution(Simulation *S, const char*);
 #endif
 
 //////////////////////// Simulation solutions ////////////////////////

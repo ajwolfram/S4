@@ -34,7 +34,7 @@ extensions = [
 	'sphinx.ext.todo',
 	'sphinx.ext.pngmath',
 	'sphinxcontrib.fulltoc',
-	'redjack.sphinx.lua'
+	# 'redjack.sphinx.lua'
 ]
 
 # Add any paths that contain templates here, relative to this directory.

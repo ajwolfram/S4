@@ -88,10 +88,14 @@ int FMMGetEpsilon_PolBasisNV(const Simulation *S, const Layer *L, const int n, s
 	// Need temp storage for Delta and P__
 	
 	std::complex<double> *P = Simulation_GetCachedField(S, L);
+	std::complex<double> *W = Simulation_GetCachedW(S, L);
 	std::complex<double> *work = NULL;
 	std::complex<double> *mDelta = NULL;
 	std::complex<double> *Eta = NULL;
-	if(NULL == P){
+    int pnotcached = NULL == P;
+    int ng2;
+    double ing2;
+	if(pnotcached){
 		// We need to compute the vector field
 
 		// Make vector fields
@@ -218,7 +222,7 @@ int FMMGetEpsilon_PolBasisNV(const Simulation *S, const Layer *L, const int n, s
 		//free(fftcfg);
 		if(NULL != vfield){ S4_free(vfield); }
 		// Add to cache
-		Simulation_AddFieldToCache((Simulation*)S, L, S->n_G, P, 4*nn);
+		/* Simulation_AddFieldToCache((Simulation*)S, L, S->n_G, P, 4*nn); */
 	}else{
 		// P contains the cached version
 		// We still need temporary space to compute -Delta
@@ -246,6 +250,104 @@ int FMMGetEpsilon_PolBasisNV(const Simulation *S, const Layer *L, const int n, s
 		}
 	}
 
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Eta:" << std::endl;
+        RNP::IO::PrintMatrix(n,n,Eta,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
+    if(NULL == W && pnotcached){
+        // First construct eta_inv
+        // Allocate memory for eta^-1 and set it to the identity
+        std::complex<double> *eta_inv = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n*n);
+        RNP::TBLAS::SetMatrix<'A'>(n,n, std::complex<double>(0.), std::complex<double>(1.), eta_inv, n);
+        // We need to copy Eta so we don't muck it up later on
+        std::complex<double> *Eta_cpy = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n*n);
+		RNP::TBLAS::CopyMatrix<'A'>(n,n, Eta, n, Eta_cpy, n);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Eta_cpy:" << std::endl;
+        RNP::IO::PrintMatrix(n,n,Eta_cpy,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Compute it's inverse
+        RNP::LinearSolve<'N'>(n,n,Eta_cpy,n, eta_inv,n, NULL, NULL);
+        // Get rid of the copy
+        S4_free(Eta_cpy);
+#ifdef DUMP_MATRICES
+            DUMP_STREAM << "eta_inv:" << std::endl;
+            RNP::IO::PrintMatrix(n,n,eta_inv,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Then lets construct \hat{N}. This is the operator that projects onto the
+        // direction normal to a material interface, and is just I - P
+        std::complex<double> *N;
+        // std::complex<double> diag = std::complex<double>(1.0*n);
+        std::complex<double> diag = std::complex<double>(1.0);
+        N = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
+        // Set N to the identity first
+        RNP::TBLAS::SetMatrix<'A'>(n2, n2, std::complex<double>(0.), diag, N, n2);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "N:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Now subtract P from it. This loops through each row and treats each row
+        // as a vector, computing
+        // N[i,:] = -1*P[i,:] + N[i,:] 
+        for(size_t i = 0; i < n2; ++i){
+            RNP::TBLAS::Axpy(n2, std::complex<double>(-1.), &P[0+i*n2], 1, &N[0+i*n2], 1);
+        }
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "N:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl;
+        /* DUMP_STREAM << "Epsilon_inv:" << std::endl; */
+        /* RNP::IO::PrintMatrix(n,n, epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl; */
+#endif
+        // Now we compute the matrix product of N and Epsilon2 and store it in
+        // the memory space of N
+        /* RNP::TBLAS::MultMM<'N','N'>(n2,n2,n2, std::complex<double>(1.),N,n2,Epsilon2,n2,std::complex<double>(0.),N,n2); */
+
+        // Compute the thing inside the parenthesis in eqn 9a of Weismanns
+        // paper (I call it W) and store it in the memory space of W
+        // This is looping through blocks of the matrix N (2Nx2N) and
+        // multiplying each sub-block by eta_inv (NxN) independently. w
+        // indexes the block. 
+        /* std::complex<double> *W; */
+        W = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
+        for(int w = 0; w < 4; ++w){
+            // If w == 1, Erow = n, else Erow = 0
+            // If w == 2, Ecol = n, else Ecol = 0
+            // w = 0, Erow = 0 , Ecol = 0, top left block
+            // w = 1, Erow = n, Ecol = 0, top right block
+            // w = 2, Erow = 0, Ecol = n, bottom left block
+            // w = 3, Erow = n, Ecol = n, bottom right block
+            int Erow = (w&1 ? n : 0);
+            int Ecol = (w&2 ? n : 0);
+            // m = n, n = n, k = n
+            // mDelta sub-block = A (nxn)
+            // P sub-block = B (nxn)
+            // Epsilon2 sub-block = C (nxn)
+            // alpha = beta = 1
+            // Computes C := alpha*A*B + beta*C
+            // We'll do the first term first, which means right multiplying by Epsilon_inv. 
+            // We don't add the contents of Ncombo here because its empty
+            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),&N[Erow+Ecol*n2],n2,eta_inv,n,std::complex<double>(0),&W[Erow+Ecol*n2],n2);
+            // Now do the second term, which means left multiplying by
+            // Epsilon_inv. Now we _do_ add the contents of Ncombo, bcause it
+            // already contains the first term
+            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),eta_inv,n,&N[Erow+Ecol*n2],n2,std::complex<double>(1.),&W[Erow+Ecol*n2],n2);
+        }
+        
+#ifdef DUMP_MATRICES
+        /* DUMP_STREAM << "N*Epsilon2:" << std::endl; */
+        /* RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl; */
+#endif
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "W:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,W,n2, DUMP_STREAM) << std::endl << std::endl;
+#endif
+		// Add to cache
+		Simulation_AddFieldToCache((Simulation*)S, L, S->n_G, P, 4*nn, W, 4*nn);
+        // Now free up all the memory we just allocated
+        S4_free(N);
+        S4_free(eta_inv);
+        S4_free(W);
+    }
 	// mDelta will contain -Delta = inv(Eta) - Epsilon
 	// Epsilon2 still only has Epsilon along its diagonal
 	RNP::TBLAS::SetMatrix<'A'>(n,n, 0.,1., mDelta,n);

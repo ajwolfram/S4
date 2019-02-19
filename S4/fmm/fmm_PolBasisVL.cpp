@@ -30,6 +30,12 @@
 # include "../RNP/LinearSolve_lapack.h"
 #endif
 #include "fmm.h"
+#ifdef DUMP_MATRICES
+# define RNP_OUTPUT_MATHEMATICA
+# define DUMP_STREAM std::cerr
+//# define DUMP_STREAM (omega.real() > 1.91637 ? std::cerr : std::cout)
+# include <IO.h>
+#endif
 
 #include <iostream>
 #include <limits>
@@ -53,6 +59,9 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 	const int nn = n*n;
 	const double unit_cell_size = Simulation_GetUnitCellSize(S);
 	const int *G = S->solution->G;
+    // Number of dimensions is 1 if 2nd component of first lattice vector is
+    // zero and first component of 2nd lattice vector is 0 in real space,
+    // otherwise its 2D
 	const int ndim = (0 == S->Lr[2] && 0 == S->Lr[3]) ? 1 : 2;
 	double *ivalues = (double*)S4_malloc(sizeof(double)*(2+10)*(L->pattern.nshapes+1));
 	double *values = ivalues + 2*(L->pattern.nshapes+1);
@@ -87,10 +96,14 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 	// Need temp storage for Delta and P__
 	
 	std::complex<double> *P = Simulation_GetCachedField(S, L);
+	std::complex<double> *W = Simulation_GetCachedW(S, L);
 	std::complex<double> *work = NULL;
 	std::complex<double> *mDelta = NULL;
 	std::complex<double> *Eta = NULL;
-	if(NULL == P){
+    int pnotcached = NULL == P;
+    int ng2;
+    double ing2;
+	if(pnotcached){
 		// We need to compute the vector field
 
 		// Make vector fields
@@ -110,21 +123,42 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 				ngrid[i] = fft_next_fast_size(ngrid[i]);
 			}
 		}
-		const int ng2 = ngrid[0]*ngrid[1];
-		
+        // Number of real space grid points
+		ng2 = ngrid[0]*ngrid[1];
+        /* std::cout << "ngrid[0]: " << ngrid[0] << std::endl; */
+        /* std::cout << "ngrid[1]: " << ngrid[1] << std::endl; */
+	
+        // Memory workspace array. N = number of basis terms, ng = number of
+        // real space grid points for vector field. Has length 6N^2 + 4*ng 
 		work = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*(6*nn + 4*ng2));
+        // mDelta stored from beginning of workspace to N^2
+        // mDelta is an NxN matrix
+        // mDelta = work[0:N^2]
 		mDelta = work;
+        // Eta is        // Eta = work[N^2:2N^2]
 		Eta = mDelta + nn;
+        // P is an NxN matrix in real space, which is why we only allocate N^2
+        // elements for it here. After Fourier transforming it becomes larger
+        // P = work[2N^2:3N^2]
 		P = Eta + nn;
+        // Ffrom is the real space thing we will be Fourier transforming
+        // Ffrom = work[3N^2:7N^2]
 		std::complex<double> *Ffrom = P + 4*nn; // Fourier source
+        // This is where the results of the fourier transform are placed.
+        // Ffrom = work[7N^2:7N^2 + ng]
 		std::complex<double> *Fto = Ffrom + ng2; // Fourier dest
+        // The real space vector field. 
+        // par = work[7N^2 + ng: 7N^2 + 2ng]
 		std::complex<double> *par = Fto + ng2; // real space parallel vector
 
 		// Generate the vector field
-		const double ing2 = 1./(double)ng2;
+		ing2 = 1./(double)ng2;
 		int ii[2];
-		
-		double *vfield = (double*)S4_malloc(sizeof(double)*2*ng2);
+	
+        // Creates workspace for the vector field. The vector field in general
+        // has two components, so we need to store two doubles for every grid
+        // point
+        double *vfield = (double*)S4_malloc(sizeof(double)*2*ng2);
 		if(0 == S->Lr[2] && 0 == S->Lr[3]){ // 1D, generate the trivial field
 			double nv[2] = {-S->Lr[1], S->Lr[0]};
 			double nva = hypot(nv[0],nv[1]);
@@ -137,6 +171,11 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 			}
 		}else{
 			S4_VERB(1, "Generating polarization vector field of size %d x %d\n", ngrid[0], ngrid[1]);
+            // 2nd argument here determines the type of vector field. 0 means
+            // tangential, 1 means normal. Normal vector fields are currently
+            // broken. This puts the vector field for the patterning of his
+            // layer into the vfield array
+            // Lr is the array containing the real space lattice vectors
 			int error = Pattern_GenerateFlowField(&L->pattern, 0, S->Lr, ngrid[0], ngrid[1], vfield);
 			
 			if(0 != error){
@@ -188,8 +227,10 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 			free(filename);
 		}
 			
-			
-		for(ii[1] = 0; ii[1] < ngrid[1]; ++ii[1]){
+	    // Here vfield contains the real space vector field. It seems to be
+        // copied exactly into par. This is necessary because par is of complex
+        // double type, while vfield is just of type double. 
+        for(ii[1] = 0; ii[1] < ngrid[1]; ++ii[1]){
 			for(ii[0] = 0; ii[0] < ngrid[0]; ++ii[0]){
 				par[2*(ii[0]+ii[1]*ngrid[0])+0] = vfield[2*(ii[0]+ii[1]*ngrid[0])+0];
 				par[2*(ii[0]+ii[1]*ngrid[0])+1] = vfield[2*(ii[0]+ii[1]*ngrid[0])+1];
@@ -197,7 +238,7 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 		}
 		
 
-		fft_plan plan = fft_plan_dft_2d(ngrid, Ffrom, Fto, 1);
+		fft_plan plan = fft_plan_dft_2d(ngrid, Ffrom, Fto, -1);
 
 		// We fill in the quarter blocks of F in Fortran order
 		for(int w = 0; w < 4; ++w){
@@ -214,20 +255,30 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 			}
 			fft_plan_exec(plan);
 
+            // This is now copying the results of the Fourier transform (the
+            // Fourier transform of P) into the P pointer. The P pointer is a
+            // just a pointer to a particular location in the worksapce array.
+            // P in real space in NxN, but its Fourier transform is 2Nx2N, so
+            // here we are computing a larger matrix and just storing it in P.
+            // This means we are actually overwriting parts of Ffrom, but
+            // that's okay because we already Fourier transformed it and don't
+            // need it anymore
 			for(int j = 0; j < n; ++j){
 				for(int i = 0; i < n; ++i){
+                    // Get indices of lattice points in Fourier space
 					int f[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
+                    // Shift so everything its indexed from 0
 					if(f[0] < 0){ f[0] += ngrid[0]; }
 					if(f[1] < 0){ f[1] += ngrid[1]; }
 					P[Erow+i+(Ecol+j)*n2] = ing2 * Fto[f[1]+f[0]*ngrid[1]];
 				}
 			}
 		}
+        // The x and y components of the vector field at each point are stored
+        // adjacent to one another in vfield, 
 		fft_plan_destroy(plan);
 
 		if(NULL != vfield){ S4_free(vfield); }
-		// Add to cache
-		Simulation_AddFieldToCache((Simulation*)S, L, S->n_G, P, 4*nn);
 	}else{
 		// P contains the cached version
 		// We still need temporary space to compute -Delta
@@ -236,7 +287,7 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 		Eta = mDelta + nn;
 	}
 	
-	// Generate the Fourier matrix of epsilon^{-1}
+	// Generate the Fourier matrix of epsilon^{-1}. See eqns 6,7,8 of paper
 	for(int j = 0; j < n; ++j){
 		for(int i = 0; i < n; ++i){
 			int dG[2] = {G[2*i+0]-G[2*j+0],G[2*i+1]-G[2*j+1]};
@@ -254,16 +305,117 @@ int FMMGetEpsilon_PolBasisVL(const Simulation *S, const Layer *L, const int n, s
 		}
 	}
 
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Eta:" << std::endl;
+        RNP::IO::PrintMatrix(n,n,Eta,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
+    if(NULL == W && pnotcached){
+        // First construct eta_inv
+        // Allocate memory for eta^-1 and set it to the identity
+        std::complex<double> *eta_inv = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n*n);
+        RNP::TBLAS::SetMatrix<'A'>(n,n, std::complex<double>(0.), std::complex<double>(1.), eta_inv, n);
+        // We need to copy Eta so we don't muck it up later on
+        std::complex<double> *Eta_cpy = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n*n);
+		RNP::TBLAS::CopyMatrix<'A'>(n,n, Eta, n, Eta_cpy, n);
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Eta_cpy:" << std::endl;
+        RNP::IO::PrintMatrix(n,n,Eta_cpy,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
+        // Compute it's inverse
+        RNP::LinearSolve<'N'>(n,n,Eta_cpy,n, eta_inv,n, NULL, NULL);
+        // Get rid of the copy
+        S4_free(Eta_cpy);
+#ifdef DUMP_MATRICES
+            DUMP_STREAM << "eta_inv:" << std::endl;
+            RNP::IO::PrintMatrix(n,n,eta_inv,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
+
+        // Compute the thing inside the parenthesis in eqn 9a of Weismanns
+        // paper (I call it W) and store it in the memory space of W
+        // This is looping through blocks of the matrix P (2Nx2N) and
+        // multiplying each sub-block by eta_inv (NxN) independently. w
+        // indexes the block. 
+        /* std::complex<double> *W; */
+        W = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>) * n2*n2);
+        for(int w = 0; w < 4; ++w){
+            // If w == 1, Erow = n, else Erow = 0
+            // If w == 2, Ecol = n, else Ecol = 0
+            // w = 0, Erow = 0 , Ecol = 0, top left block
+            // w = 1, Erow = n, Ecol = 0, top right block
+            // w = 2, Erow = 0, Ecol = n, bottom left block
+            // w = 3, Erow = n, Ecol = n, bottom right block
+            int Erow = (w&1 ? n : 0);
+            int Ecol = (w&2 ? n : 0);
+            // m = n, n = n, k = n
+            // mDelta sub-block = A (nxn)
+            // P sub-block = B (nxn)
+            // Epsilon2 sub-block = C (nxn)
+            // alpha = beta = 1
+            // Computes C := alpha*A*B + beta*C
+            // We'll do the first term first, which means right multiplying by Epsilon_inv. 
+            // We don't add the contents of Ncombo here because its empty
+            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),&P[Erow+Ecol*n2],n2,eta_inv,n,std::complex<double>(0),&W[Erow+Ecol*n2],n2);
+            // Now do the second term, which means left multiplying by
+            // Epsilon_inv. Now we _do_ add the contents of Ncombo, bcause it
+            // already contains the first term
+            RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(.5),eta_inv,n,&P[Erow+Ecol*n2],n2,std::complex<double>(1.),&W[Erow+Ecol*n2],n2);
+        }
+        
+#ifdef DUMP_MATRICES
+        /* DUMP_STREAM << "N*Epsilon2:" << std::endl; */
+        /* RNP::IO::PrintMatrix(n2,n2,N,n2, DUMP_STREAM) << std::endl << std::endl; */
+#endif
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "W:" << std::endl;
+        RNP::IO::PrintMatrix(n2,n2,W,n2, DUMP_STREAM) << std::endl << std::endl;
+#endif
+		// Add to cache
+		Simulation_AddFieldToCache((Simulation*)S, L, S->n_G, P, 4*nn, W, 4*nn);
+        // Now free up all the memory we just allocated
+        S4_free(eta_inv);
+        S4_free(W);
+    }
+#ifdef DUMP_MATRICES
+        DUMP_STREAM << "Eta:" << std::endl;
+        RNP::IO::PrintMatrix(n,n,Eta,n, DUMP_STREAM) << std::endl << std::endl;
+#endif
 	// mDelta will contain -Delta = inv(Eta) - Epsilon
 	// Epsilon2 still only has Epsilon along its diagonal
 	RNP::TBLAS::SetMatrix<'A'>(n,n, 0.,1., mDelta,n);
+    // I think this is just intended to invert Eta and put it along the
+    // diagonal of mDelta. Recall Delta = epsilon - eta^-1 so 
+    // -Delta = eta^-1 - epsilon. This seems to make sense because in the loop
+    // we then subtract epsilon from mDelta
+    // This is equivalent to backslash operator in MATLAB, which is different
+    // from taking the inverse and multiplying. Can be faster and better
+    // conditioned numerically with the same result
+    // Basically taking the inverse by passing the identity into the fifth
+    // argument and then sticking it into mDelta
 	RNP::LinearSolve<'N'>(n,n, Eta,n, mDelta,n, NULL, NULL);
 	for(int i = 0; i < n; ++i){
+        // alpha = -1
+        // x = Epsilon2
+        // y = mDelta
+        // Computes y := alpha*x + y
 		RNP::TBLAS::Axpy(n, std::complex<double>(-1.), &Epsilon2[0+i*n2],1, &mDelta[0+i*n],1);
 	}
+    // This is looping through blocks of the matrix in equation 51 (i.e Epsilon
+    // 2) and filling in each sub-block independently. w indexes the block
 	for(int w = 0; w < 4; ++w){
-		int Erow = (w&1 ? n : 0);
+        // If w == 1, Erow = n, else Erow = 0
+        // If w == 2, Ecol = n, else Ecol = 0
+        // w = 0, Erow = 0 , Ecol = 0, top left block
+        // w = 1, Erow = n, Ecol = 0, top right block
+        // w = 2, Erow = 0, Ecol = n, bottom left block
+        // w = 3, Erow = n, Ecol = n, bottom right block
+        int Erow = (w&1 ? n : 0);
 		int Ecol = (w&2 ? n : 0);
+        // m = n, n = n, k = n
+        // mDelta sub-block = A (nxn)
+        // P sub-block = B (nxn)
+        // Epsilon2 sub-block = C (nxn)
+        // alpha = beta = 1
+        // Computes C := alpha*A*B + beta*C
 		RNP::TBLAS::MultMM<'N','N'>(n,n,n, std::complex<double>(1.),mDelta,n, &P[Erow+Ecol*n2],n2, std::complex<double>(1.),&Epsilon2[Erow+Ecol*n2],n2);
 	}
 	if(NULL != work){ S4_free(work); }

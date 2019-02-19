@@ -18,6 +18,8 @@
  */
 
 #include "Python.h"
+#include "numpy/arrayobject.h"
+
 #include "config.h"
 
 #ifdef HAVE_MPI
@@ -48,9 +50,14 @@
 #define Bool unsigned char
 #endif
 
+
 void fft_init(void);
 void fft_destroy(void);
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 static int CheckPyNumber(PyObject *obj){
 	return PyFloat_Check(obj) || PyLong_Check(obj)
@@ -114,8 +121,8 @@ void HandleSolutionErrorCode(const char *fname, int code){
 	static const char* errstr[] = {
 		def, /* 0 */
 		"A memory allocation error occurred", /* 1 */
-		def, /* 2 */
-		def, /* 3 */
+		"Invalid file extension for solution file. Must be one of ['txt', 'xml', 'bin']", /* 2 */
+		"Unable to open file stream", /* 3 */
 		def, /* 4 */
 		def, /* 5 */
 		def, /* 6 */
@@ -260,9 +267,11 @@ int lanczos_converter(PyObject *obj, struct lanczos_smoothing_settings *s){
 	s->set_power = 0;
 	s->set_width = 0;
 	if(PyBool_Check(obj)){
+        // printf("\nPassed in boolean to lanczos\n");
 		s->use = (Py_True == obj);
 		return 1;
 	}else if(PyDict_Check(obj)){
+        // printf("\nPassed in dict to lanczos\n");
 		PyObject *val;
 		s->use = 1;
 		if((val = PyDict_GetItemString(obj, "Width"))){
@@ -654,6 +663,31 @@ static PyObject *S4Sim_Clone(S4Sim *self, PyObject *args){
 		Simulation_Clone(&(self->S), &(cpy->S));
 	}
 	return (PyObject*)cpy;
+}
+static PyObject *S4Sim_LoadSolution(S4Sim *self, PyObject *args, PyObject *kwds){
+    //printf"Inside S4Sim_LoadSolution\n");
+	static char *kwlist[] = { "Filename", NULL };
+	const char *fname;
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "s:LoadSolution", kwlist, &fname)){ return NULL; }
+    //printf"Parsed args!\n");
+    int err;
+    err = Simulation_LoadSolution(&(self->S), fname);
+    // if (err != 0){
+    //     HandleSolutionErrorCode("Simulation_LoadSolution", err);
+    // }
+	Py_RETURN_NONE;
+}
+
+static PyObject *S4Sim_SaveSolution(S4Sim *self, PyObject *args, PyObject *kwds){
+	static char *kwlist[] = { "Filename", NULL };
+	const char *fname;
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "s:SaveSolution", kwlist, &fname)){ return NULL; }
+    int err;
+    err = Simulation_SaveSolution(&(self->S), fname);
+    if (err != 0){
+        HandleSolutionErrorCode("Simulation_SaveSolution", err);
+    }
+	Py_RETURN_NONE;
 }
 
 static PyObject *S4Sim_ConvertUnits(S4Sim *self, PyObject *args)
@@ -1153,6 +1187,40 @@ static PyObject *S4Sim_GetBasisSet(S4Sim *self, PyObject *args){
 	return rv;
 }
 
+static PyObject *S4Sim_GetPropagationConstants(S4Sim *self, PyObject *args, PyObject *kwds){
+	int ret, n, i;
+	int *G;
+	static char *kwlist[] = { "Layer", NULL };
+	const char *layername;
+	double *q;
+	Layer *layer;
+
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "s|d:GetPropagationConstants", kwlist, &layername)){ return NULL; }
+
+	layer = Simulation_GetLayerByName(&(self->S), layername, NULL);
+	if(NULL == layer){
+		PyErr_Format(PyExc_RuntimeError, "GetPropagationConstants: Layer named '%s' not found.", layername);
+		return NULL;
+	}
+	n = Simulation_GetNumG(&(self->S), &G);
+    int n2 = 2*n; 
+    // q vector in S4 contains 2*n complex doubles, meaning we need a memory
+    // space that can accomodate 4*n doubles 
+	q = (double*)malloc(sizeof(double)*2*n2);
+	ret = Simulation_GetPropagationConstants(&(self->S), layer, q);
+	if(0 != ret){
+		HandleSolutionErrorCode("GetPropagationConstants", ret);
+		return NULL;
+	}
+	PyObject *rv;
+	rv = PyTuple_New(2*n);
+	for(i = 0; i < n2; ++i){
+		PyTuple_SetItem(rv, i, PyComplex_FromDoubles(q[2*i+0], q[2*i+1]));
+	}
+	free(q);
+	return rv;
+}
+
 static PyObject *S4Sim_GetAmplitudes(S4Sim *self, PyObject *args, PyObject *kwds){
 	int ret, n, i, j;
 	int *G;
@@ -1377,6 +1445,81 @@ static PyObject *S4Sim_GetFields(S4Sim *self, PyObject *args, PyObject *kwds){
 	);
 }
 
+static PyObject *S4Sim_GetFieldsOnGridNumpy(S4Sim *self, PyObject *args, PyObject *kwds)
+{
+  static char* kwlist[] = { "z", "NumSamples", NULL };
+  double z;
+  double *Efields, *Hfields;
+  int ret;
+  Py_ssize_t nxy[2];
+  /* PyObject* EHfields = NULL; */
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "d(nn):GetFieldsOnGrid", kwlist, &z, &nxy[0], &nxy[1])) {
+    return NULL;
+  }
+  int snxy[2] = {nxy[0], nxy[1]};
+  /* double* Efields = PyArray_DATA(EHfields); */
+  /* double* Hfields = (double*)(PyArray_BYTES(EHfields) + PyArray_STRIDE(EHfields, 0)); */
+  Efields = (double*)malloc(sizeof(double) * 2*3 * nxy[0] * nxy[1]);
+  Hfields = (double*)malloc(sizeof(double) * 2*3 * nxy[0] * nxy[1]);
+  if (0 != (ret = Simulation_GetFieldPlane(&(self->S), snxy, z, Efields, Hfields))) {
+    HandleSolutionErrorCode("GetFieldsOnGrid", ret);
+    goto fail;
+  }
+  /* npy_intp *dims */
+  /* void *data; */
+  /* int nd = 2; */
+  /* npy_intp *dims; */
+  /* dims = snxy */
+  /* npy_intp dims[3] = {nxy[0], nxy[1], 3}; */
+  npy_intp dims[3] = {nxy[1], nxy[0], 3};
+  PyObject *Earr;
+  /* PyArray_Descr* desc = PyArray_DescrFromType(NPY_COMPLEX128); */
+  Earr = PyArray_SimpleNewFromData(3, dims, NPY_COMPLEX128, Efields);
+  /* PyArray_Dims new_dims; */
+  /* npy_intp tmp[3] = {1, 0, 2}; */ 
+  /* new_dims.ptr = tmp; */
+  /* new_dims.len = 3; */
+  /* Earr = PyArray_Transpose(Earr, &new_dims); */
+  /* npy_intp *strides = PyArray_STRIDES(Earr); */
+  /* npy_intp temp; */ 
+  /* temp = strides[0]; */
+  /* strides[0] = strides[1]; */
+  /* strides[1] = temp; */
+  /* PyArray_UpdateFlags(Earr, NPY_ARRAY_UPDATE_ALL); */
+  PyArray_ENABLEFLAGS(Earr, NPY_ARRAY_OWNDATA);
+  /* PyArray_ENABLEFLAGS(Earr,  NPY_ARRAY_F_CONTIGUOUS); */
+  PyObject *Harr;
+  Harr = PyArray_SimpleNewFromData(3, dims, NPY_COMPLEX128, Hfields);
+  /* Harr = PyArray_Transpose(Harr, &new_dims); */
+  /* strides = PyArray_STRIDES(Harr); */
+  /* temp = strides[0]; */
+  /* strides[0] = strides[1]; */
+  /* strides[1] = temp; */
+
+  /* PyArray_UpdateFlags(Harr, NPY_ARRAY_UPDATE_ALL); */
+  PyArray_ENABLEFLAGS(Harr, NPY_ARRAY_OWNDATA);
+  /* Harr->flags |= NPY_OWNDATA */
+
+  /* PyArray_ENABLEFLAGS(Harr,  NPY_ARRAY_F_CONTIGUOUS); */
+
+
+  /* PyArray_Descr* desc = PyArray_DescrFromType(NPY_COMPLEX128); */
+  /* /1* npy_intp dims = {2, nxy[0], nxy[1], 3}; *1/ */
+  /* npy_intp dims = {2, 3, nxy[0], nxy[1]}; */
+  /* if (!(EHfields = PyArray_Zeros(4, &dims, desc, 0))) { */
+  /*   goto fail; */
+  /* } */
+  
+  /* return EHfields; */
+  /* return Py_BuildValue("(OO)", Earr, Harr); */
+  return Py_BuildValue("(NN)", Earr, Harr);
+
+ fail:
+  /* Py_XDECREF(EHfields); */
+  return NULL;
+}
+
+
 static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kwds){
 	int i, j, ret;
 	static char *kwlist[] = { "z", "NumSamples", "Format", "BaseFilename", NULL };
@@ -1413,8 +1556,8 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 	if(0 == strcmp("FileWrite", fmt)){
 		filename[len+1] = 'E';
 		fp = fopen(filename, "wb");
-		for(i = 0; i < nxy[0]; ++i){
-			for(j = 0; j < nxy[1]; ++j){
+		for(j = 0; j < nxy[1]; ++j){
+			for(i = 0; i < nxy[0]; ++i){
 				fprintf(fp,
 					"%d\t%d\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\n",
 					i, j,
@@ -1431,8 +1574,8 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 		fclose(fp);
 		filename[len+1] = 'H';
 		fp = fopen(filename, "wb");
-		for(i = 0; i < nxy[0]; ++i){
-			for(j = 0; j < nxy[1]; ++j){
+		for(j = 0; j < nxy[1]; ++j){
+			for(i = 0; i < nxy[0]; ++i){
 				fprintf(fp,
 					"%d\t%d\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\n",
 					i, j,
@@ -1454,8 +1597,8 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 	}else if(0 == strcmp("FileAppend", fmt)){
 		filename[len+1] = 'E';
 		fp = fopen(filename, "ab");
-		for(i = 0; i < nxy[0]; ++i){
-			for(j = 0; j < nxy[1]; ++j){
+		for(j = 0; j < nxy[1]; ++j){
+			for(i = 0; i < nxy[0]; ++i){
 				fprintf(fp,
 					"%d\t%d\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\n",
 					i, j, z,
@@ -1473,8 +1616,8 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 		fclose(fp);
 		filename[len+1] = 'H';
 		fp = fopen(filename, "ab");
-		for(i = 0; i < nxy[0]; ++i){
-			for(j = 0; j < nxy[1]; ++j){
+		for(j = 0; j < nxy[1]; ++j){
+			for(i = 0; i < nxy[0]; ++i){
 				fprintf(fp,
 					"%d\t%d\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\t%.14g\n",
 					i, j, z,
@@ -1499,15 +1642,25 @@ static PyObject *S4Sim_GetFieldsOnGrid(S4Sim *self, PyObject *args, PyObject *kw
 		double *F[2] = { Efields, Hfields };
 		PyObject *rv = PyTuple_New(2);
 
+        /* PyArray_ENABLEFLAGS(arr, NPY_ARRAY_OWNDATA); */
+        /* int nd; */
+        /* npy_intp *dims */
+        /* void *data; */
+        /* int nd = 2; */
+        /* npy_intp *dims; */
+        /* dims = snxy */
+        /* arr = PyArray_SimpleNewFromData(nd, dims, typenum, data);` */
+        /* Earr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX128, Efields);` */
+        /* Harr = PyArray_SimpleNewFromData(nd, dims, NPY_COMPLEX128, Hfields);` */
 		for(k = 0; k < 2; ++k){
-			PyObject *pk = PyTuple_New(nxy[0]);
+			PyObject *pk = PyTuple_New(nxy[1]);
 			PyTuple_SetItem(rv, k, pk);
-			for(i = 0; i < nxy[0]; ++i){
-				PyObject *pi = PyTuple_New(nxy[1]);
-				PyTuple_SetItem(pk, i, pi);
-				for(j = 0; j < nxy[1]; ++j){
+            for(j = 0; j < nxy[1]; ++j){
+				PyObject *pi = PyTuple_New(nxy[0]);
+				PyTuple_SetItem(pk, j, pi);
+                for(i = 0; i < nxy[0]; ++i){
 					PyObject *pj = PyTuple_New(3);
-					PyTuple_SetItem(pi, j, pj);
+					PyTuple_SetItem(pi, i, pj);
 					for(i3 = 0; i3 < 3; ++i3){
 						PyTuple_SetItem(pj, i3, PyComplex_FromDoubles(
 							F[k][2*(3*(i+j*nxy[0])+i3)+0],
@@ -1568,6 +1721,8 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 		"LanczosSmoothing",          /* obj */
 		"SubpixelSmoothing",         /* bool */
 		"ConserveMemory",            /* bool */
+        "BasisFieldDumpPrefix",      /* str */
+        "WeismannFormulation",       /* bool */
 		NULL
 	};
 	int verbosity = -1;
@@ -1577,23 +1732,27 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 	struct lanczos_smoothing_settings lanczos_smoothing;
 	int subpixel_smoothing = -1;
 	int conserve_memory = -1;
+	int use_weismann_formulation = -1;
 
 	lanczos_smoothing.set = 0;
 
 	const char *lattice_truncation = NULL;
 	const char *polarization_basis = NULL;
+	const char *basisfieldprefix = NULL;
 
 	if(!PyArg_ParseTupleAndKeywords(
-		args, kwds, "|isO&iO&sO&O&O&:SetOptions", kwlist,
+		args, kwds, "|isO&iO&sO&O&O&sO&:SetOptions", kwlist,
 		&verbosity,
 		&lattice_truncation,
 		&bool_converter, &discretized_epsilon,
 		&discretization_resolution,
 		&bool_converter, &polarization_decomp,
 		&polarization_basis,
-		&bool_converter, &lanczos_smoothing,
+		&lanczos_converter, &lanczos_smoothing,
 		&bool_converter, &subpixel_smoothing,
-		&bool_converter, &conserve_memory
+		&bool_converter, &conserve_memory,
+        &basisfieldprefix,
+		&bool_converter, &use_weismann_formulation
 	)){ return NULL; }
 	if(verbosity >= 0){
 		if(verbosity > 9){ verbosity = 9; }
@@ -1622,6 +1781,15 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 	if(polarization_decomp >= 0){
 		self->S.options.use_polarization_basis = polarization_decomp;
 	}
+
+    if(NULL != basisfieldprefix){
+        const size_t prefix_len = strlen(basisfieldprefix);
+        char *prefix = (char*)malloc(sizeof(char) * (prefix_len + 1));
+        strcpy(prefix, basisfieldprefix);
+        self->S.options.vector_field_dump_filename_prefix = prefix;
+        // self->S.options.vector_field_dump_filename_prefix = basisfieldprefix;
+    }
+
 	if(NULL != polarization_basis){
 		if(0 == strcmp("Default", polarization_basis)){
 			self->S.options.use_normal_vector_basis = 0;
@@ -1651,6 +1819,9 @@ static PyObject *S4Sim_SetOptions(S4Sim *self, PyObject *args, PyObject *kwds){
 	}
 	if(conserve_memory >= 0){
 		self->S.options.use_less_memory = conserve_memory;
+	}
+	if(use_weismann_formulation >= 0){
+		self->S.options.use_weismann_formulation = use_weismann_formulation;
 	}
 	Py_RETURN_NONE;
 }
@@ -1789,6 +1960,8 @@ static PyMethodDef S4Sim_methods[] = {
 	{"SetMaterial"				, (PyCFunction)S4Sim_SetMaterial, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SetMaterial(name,eps) -> None")},
 	{"AddLayer"					, (PyCFunction)S4Sim_AddLayer, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("AddLayer(name,thickness,matname) -> None")},
 	{"AddLayerCopy"				, (PyCFunction)S4Sim_AddLayerCopy, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("AddLayerCopy(name,thickness,layer) -> None")},
+	{"SaveSolution"				, (PyCFunction)S4Sim_SaveSolution, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SaveSolution(filename) -> None")},
+	{"LoadSolution"				, (PyCFunction)S4Sim_LoadSolution, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("LoadSolution(filename) -> None")},
 	{"SetLayer"					, (PyCFunction)S4Sim_SetLayer, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SetLayer(name,thickness,material) -> None")},
 	{"SetLayerThickness"		, (PyCFunction)S4Sim_SetLayerThickness, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SetLayerThickness(layer,thickness) -> None")},
 	{"SetVerbosity"				, (PyCFunction)S4Sim_SetVerbosity, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("SetVerbosity(level) -> None")},
@@ -1804,11 +1977,12 @@ static PyMethodDef S4Sim_methods[] = {
 	{"GetReciprocalLattice"		, (PyCFunction)S4Sim_GetReciprocalLattice, METH_NOARGS, PyDoc_STR("GetReciprocalLattice() -> ((px,py),(qx,qy))")},
 	{"GetEpsilon"				, (PyCFunction)S4Sim_GetEpsilon, METH_VARARGS, PyDoc_STR("GetEpsilon(x,y,z) -> Complex")},
 	{"OutputLayerPatternPostscript", (PyCFunction)S4Sim_OutputLayerPatternPostscript, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("OutputLayerPatternPostscript(layer,filename) -> None")},
-	{ "OutputLayerPatternRealization", (PyCFunction)S4Sim_OutputLayerPatternRealization, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("OutputLayerPatternRealization(layer, nu, nv, filename) -> None")},
+	{"OutputLayerPatternRealization", (PyCFunction)S4Sim_OutputLayerPatternRealization, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("OutputLayerPatternRealization(layer, nu, nv, filename) -> None")},
 	/* Outputs requiring solutions */
 	{"OutputStructurePOVRay"	, (PyCFunction)S4Sim_OutputStructurePOVRay, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("OutputStructurePOVRay(filename) -> None")},
 	{"GetBasisSet"				, (PyCFunction)S4Sim_GetBasisSet, METH_NOARGS, PyDoc_STR("GetBasisSet() -> Tuple")},
 	{"GetAmplitudes"			, (PyCFunction)S4Sim_GetAmplitudes, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("GetAmplitudes(layer,zoffset) -> Tuple")},
+	{"GetPropagationConstants"	, (PyCFunction)S4Sim_GetPropagationConstants, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("GetPropagationConstants(layer) -> Tuple")},
 	{"GetPowerFlux"				, (PyCFunction)S4Sim_GetPowerFlux, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("GetPowerFlux(layer,zoffset) -> (forw,back)")},
 	{"GetPowerFluxByOrder"		, (PyCFunction)S4Sim_GetPowerFluxByOrder, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("GetPowerFluxByOrder(layer,zoffset) -> Tuple")},
 	{"GetStressTensorIntegral"	, (PyCFunction)S4Sim_GetStressTensorIntegral, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("GetStressTensorIntegral(layer,zoffset) -> Complex")},
@@ -1820,6 +1994,7 @@ static PyMethodDef S4Sim_methods[] = {
 	*/
 	{"GetFields"				, (PyCFunction)S4Sim_GetFields, METH_VARARGS, PyDoc_STR("GetFields(x,y,z) -> (Tuple,Tuple)")},
 	{"GetFieldsOnGrid"			, (PyCFunction)S4Sim_GetFieldsOnGrid, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("GetFieldsOnGrid(z,nsamples,format,filename) -> Tuple")},
+	{"GetFieldsOnGridNumpy"	    , (PyCFunction)S4Sim_GetFieldsOnGridNumpy, METH_VARARGS | METH_KEYWORDS, PyDoc_STR("GetFieldsOnGrid(z,nsamples) -> np.ndarray")},
 	{"GetSMatrixDeterminant"	, (PyCFunction)S4Sim_GetSMatrixDeterminant, METH_NOARGS, PyDoc_STR("GetSMatrixDeterminant() -> Tuple")},
 	/*
 	{"GetDiffractionOrder"		, (PyCFunction)S4Sim_GetDiffractionOrder, METH_VARARGS, PyDoc_STR("GetDiffractionOrder(m,n) -> order")},
@@ -2043,6 +2218,8 @@ PyMODINIT_FUNC initS4(void)
 	m = Py_InitModule3("S4", S4_funcs, module_doc);
 #endif
 	if(m == NULL){ INITERROR; }
+    // Need to import numpy C API here
+    import_array();
 
 	struct module_state *st = GETSTATE(m);
 
@@ -2058,3 +2235,7 @@ PyMODINIT_FUNC initS4(void)
 	return m;
 #endif
 }
+
+#ifdef __cplusplus
+}
+#endif
