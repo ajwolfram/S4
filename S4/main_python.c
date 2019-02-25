@@ -598,7 +598,7 @@ static PyObject *S4SpectrumSampler_new(PyTypeObject *type, PyObject *args, PyObj
 	SpectrumSampler_Options options = {33, 0.001, 10, 1e-6, 0};
 	PyObject *py_expectBool = NULL;
 	S4SpectrumSampler *self;
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "dd|i|d|d|d|O!:SpectrumSampler_New", \
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "dd|idddO!:SpectrumSampler_New", \
 		kwlist, &x0, &x1, &options.initial_num_points, &options.range_threshold,\
 		&options.max_bend, &options.min_dx, &PyBool_Type, &py_expectBool))
 		return NULL;
@@ -1929,7 +1929,9 @@ static PyObject *S4SpectrumSampler_GetSpectrum(S4SpectrumSampler *self, PyObject
 	for(int i = 0; i < n; i++)
 	{
 		SpectrumSampler_Enumerator_Get(e, pt);
-		PyTuple_SetItem(retObj, i, PyTuple_Pack(2, pt[0], pt[1]));
+		PyTuple_SetItem(retObj, i, PyTuple_Pack(2,
+                                                PyFloat_FromDouble(pt[0]),
+                                                PyFloat_FromDouble(pt[1])));
 	}
 	return retObj;
 }
