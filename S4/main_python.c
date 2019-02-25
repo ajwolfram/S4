@@ -1930,8 +1930,10 @@ static PyObject *S4SpectrumSampler_GetSpectrum(S4SpectrumSampler *self, PyObject
 	{
 		SpectrumSampler_Enumerator_Get(e, pt);
 		PyTuple_SetItem(retObj, i, PyTuple_Pack(2,
-                                                PyFloat_FromDouble(pt[0]),
-                                                PyFloat_FromDouble(pt[1])));
+				                                PyFloat_FromDouble(pt[0]),
+				                                PyFloat_FromDouble(pt[1])
+				                                ));
+
 	}
 	return retObj;
 }
