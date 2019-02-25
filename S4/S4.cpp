@@ -3437,6 +3437,9 @@ int Simulation_MakeExcitationPlanewave(Simulation *S, const double angle[2], con
 	}
 
 	Simulation_DestroySolution(S);
+    // Destroy current layer modes before setting new values
+    // required to ensure new layer modes are calculated the next time a solution is required
+    S4_Simulation_DestroyLayerModes(S, -1);
 	S->exc.type = 0;
 
 	const Material *M = Simulation_GetMaterialByName(S, S->layer->material, NULL);
