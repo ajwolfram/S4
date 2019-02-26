@@ -15,32 +15,31 @@
 #  NOTE: on Fedora, need to link blas and lapack properly, where X.X.X is some version numbers
 #  Linking Command Example: sudo ln -s /usr/lib64/liblapack.so.X.X.X /usr/lib64/liblapack.so
 #  blas Example: sudo ln -s /usr/lib64/libopeblas64.so.X.X.X /usr/lib64/libblas.so
-#  Can also use -L to link to the explicit libary path 
-BLAS_LIB = -lblas
-LAPACK_LIB = -llapack
-
+#  Can also use -L to link to the explicit libary path
+# BLAS_LIB = -lblas
+#
 # Specify the flags for Lua headers and libraries (only needed for Lua frontend)
 # Recommended: build lua in the current directory, and link against this local version
 # LUA_INC = -I./lua-5.2.4/install/include
 # LUA_LIB = -L./lua-5.2.4/install/lib -llua -ldl -lm
-LUA_INC = -I./lua-5.2.4/install/include
-LUA_LIB = -L./lua-5.2.4/install/lib -llua -ldl -lm
+# LUA_INC = -I./lua-5.2.4/install/include
+# LUA_LIB = -L./lua-5.2.4/install/lib -llua -ldl -lm
 
 # OPTIONAL
 # Typically if installed,
 #  FFTW3_INC can be left empty
-#  FFTW3_LIB = -lfftw3 
+#  FFTW3_LIB = -lfftw3
 #  or, if Fedora and/or fftw is version 3 but named fftw rather than fftw3
-#  FTW3_LIB = -lfftw 
+#  FTW3_LIB = -lfftw
 #  May need to link libraries properly as with blas and lapack above
-FFTW3_INC =
-FFTW3_LIB = -lfftw3
+# FFTW3_INC =
+# FFTW3_LIB = -lfftw3
 
 # Typically,
 #  PTHREAD_INC = -DHAVE_UNISTD_H
 #  PTHREAD_LIB = -lpthread
-PTHREAD_INC = -DHAVE_UNISTD_H
-PTHREAD_LIB = -lpthread
+# PTHREAD_INC = -DHAVE_UNISTD_H
+# PTHREAD_LIB = -lpthread
 
 # OPTIONAL
 # If not installed:
@@ -48,8 +47,8 @@ PTHREAD_LIB = -lpthread
 # Typically, if installed:
 #CHOLMOD_INC = -I/usr/include/suitesparse
 #CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
-CHOLMOD_INC = -I/usr/include/suitesparse
-CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
+# CHOLMOD_INC = -I/usr/include/suitesparse
+# CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
 
 # Specify the MPI library
 # For example, on Fedora: dnf  install openmpi-devel
@@ -61,29 +60,29 @@ CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
 #MPI_LIB = -L/usr/lib64/openmpi/lib/libmpi.so
 
 # Enable S4_TRACE debugging
-# values of 1, 2, 3 enable debugging, with verbosity increasing as 
+# values of 1, 2, 3 enable debugging, with verbosity increasing as
 # value increases. 0 to disable
 S4_DEBUG = 0
 S4_PROF = 0
 
 # Specify custom compilers if needed
-CXX = g++
-CC  = gcc
+#CXX = g++
+#CC  = gcc
 
 #CFLAGS += -O3 -fPIC
-CFLAGS = -Wall -O3 -msse3 -msse2 -msse -fPIC
+CFLAGS = -Wall -O3 -fPIC -m64 -mtune=native -march=native -msse3 -msse2 -msse
 
 # options for Sampler module
 OPTFLAGS = -O3
 
 OBJDIR = ./build
 S4_BINNAME = $(OBJDIR)/S4
-S4_LIBNAME = $(OBJDIR)/libS4.a
-S4r_LIBNAME = $(OBJDIR)/libS4r.a
+S4_LIBNAME = $(OBJDIR)/libS4.so
+S4r_LIBNAME = $(OBJDIR)/libS4r.so
 
-#### Download, compile, and install boost serialization lib. 
+#### Download, compile, and install boost serialization lib.
 #### This should all work fine, you must modify BOOST_INC, BOOST_LIBS,
-#### and PREFIX if you want to install boost to a different location 
+#### and PREFIX if you want to install boost to a different location
 
 # Specify the paths to the boost include and lib directories
 BOOST_PREFIX=${CURDIR}/S4
@@ -96,7 +95,7 @@ $(BOOST_FILE):
 	wget $(BOOST_URL) -O $(BOOST_FILE)
 
 # Target for extracting boost from archive and compiling. Depends on download target above
-${CURDIR}/S4/lib: $(BOOST_FILE)  
+${CURDIR}/S4/lib: $(BOOST_FILE)
 	$(eval BOOST_DIR := $(shell tar tzf $(BOOST_FILE) | sed -e 's@/.*@@' | uniq))
 	@echo Boost dir is $(BOOST_DIR)
 	tar -xzvf $(BOOST_FILE)
@@ -110,32 +109,32 @@ boost: $(BOOST_PREFIX)/lib
 
 #### Set the compilation flags
 
-CPPFLAGS = -Wall -I. -IS4 -IS4/RNP -IS4/kiss_fft 
- 
+CPPFLAGS = -Wall -I. -IS4 -IS4/RNP -IS4/kiss_fft
+
 ifeq ($(S4_PROF), 1)
 CPPFLAGS += -g -pg
 endif
 
 ifeq ($(S4_DEBUG), 1)
-CPPFLAGS += -ggdb 
+CPPFLAGS += -ggdb
 endif
 
 ifeq ($(S4_DEBUG), 2)
 CPPFLAGS += -DENABLE_S4_TRACE
-CPPFLAGS += -ggdb 
+CPPFLAGS += -ggdb
 endif
 
 ifeq ($(S4_DEBUG), 3)
 CPPFLAGS += -DENABLE_S4_TRACE
 CPPFLAGS += -DDUMP_MATRICES
-CPPFLAGS += -ggdb 
+CPPFLAGS += -ggdb
 endif
 
 ifeq ($(S4_DEBUG), 4)
 CPPFLAGS += -DENABLE_S4_TRACE
 CPPFLAGS += -DDUMP_MATRICES
 CPPFLAGS += -DDUMP_MATRICES_LARGE
-CPPFLAGS += -ggdb 
+CPPFLAGS += -ggdb
 endif
 
 ifdef BOOST_INC
@@ -178,7 +177,7 @@ objdir:
 	mkdir -p $(OBJDIR)/S4k
 	mkdir -p $(OBJDIR)/S4r
 	mkdir -p $(OBJDIR)/modules
-	
+
 S4_LIBOBJS = \
 	$(OBJDIR)/S4k/S4.o \
 	$(OBJDIR)/S4k/rcwa.o \
@@ -278,7 +277,7 @@ $(OBJDIR)/S4k/convert.o: S4/convert.c
 $(OBJDIR)/S4k/Eigensystems.o: S4/RNP/Eigensystems.cpp
 	$(CXX) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 
-	
+
 
 
 $(OBJDIR)/S4r/Material.o: S4r/Material.cpp S4r/Material.hpp S4r/Types.hpp
@@ -305,11 +304,11 @@ $(OBJDIR)/S4r/IRA.o: S4r/IRA.cpp S4r/IRA.hpp S4r/Types.hpp
 	$(CXX) -c $(CFLAGS) $(CPPFLAGS) -I. $< -o $@
 $(OBJDIR)/S4r/intersection.o: S4r/intersection.c S4r/intersection.h
 	$(CC) -c -O3 $< -o $@
-$(OBJDIR)/S4r/periodic_off2.o: S4r/periodic_off2.c S4r/periodic_off2.h 
+$(OBJDIR)/S4r/periodic_off2.o: S4r/periodic_off2.c S4r/periodic_off2.h
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@
 $(OBJDIR)/S4r/predicates.o: S4r/predicates.c
 	$(CC) -c -O3 $< -o $@
-	
+
 #### Lua Frontend
 
 $(OBJDIR)/S4k/main_lua.o: S4/main_lua.c objdir

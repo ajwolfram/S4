@@ -11,8 +11,8 @@ cat <<SETUPPY > setup.py
 from distutils.core import setup, Extension
 import numpy as np
 #import os
-#os.environ["CC"] = "g++"
-#os.environ["CXX"] = "g++"
+#os.environ["CC"] = "icc"
+#os.environ["CXX"] = "icpc"
 
 libs = ['S4', 'stdc++']
 lib_dirs = ['$OBJDIR', '$BOOST_PREFIX/lib']
