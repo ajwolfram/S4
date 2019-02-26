@@ -225,7 +225,7 @@ S4_Simulation* S4_Simulation_New(const S4_real *Lr, unsigned int nG, int *G){
 	S->options.lanczos_smoothing_power = 1;
 
 	S->field_cache = NULL;
-	
+
 	S->msg = NULL;
 	S->msgdata = NULL;
 
@@ -295,8 +295,8 @@ void S4_Simulation_Destroy(S4_Simulation *S){
 	Simulation_SetExcitationType(S, -1);
 	Simulation_InvalidateFieldCache(S);
 	if(NULL != S->options.vector_field_dump_filename_prefix){
-		free(S->options.vector_field_dump_filename_prefix);
 		S->options.vector_field_dump_filename_prefix = NULL;
+		free(S->options.vector_field_dump_filename_prefix);
 	}
 	S4_free(S->kx);
 	S4_free(S->G);
@@ -3646,7 +3646,7 @@ int S4_Simulation_GetFieldPlane(S4_Simulation *S, const int nxy[2], const S4_rea
 		S4_TRACE("< S4_Simulation_GetFieldPlane (early exit; E and H both NULL)\n");
 		return 0;
 	}
-	
+
 	if(1 == nxy[0] && 1 == nxy[1]){
 		int ret = Simulation_GetField(S, xyz0, E, H);
 		if(0 == ret){
