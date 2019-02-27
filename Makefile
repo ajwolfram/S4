@@ -16,15 +16,15 @@
 #  Linking Command Example: sudo ln -s /usr/lib64/liblapack.so.X.X.X /usr/lib64/liblapack.so
 #  blas Example: sudo ln -s /usr/lib64/libopeblas64.so.X.X.X /usr/lib64/libblas.so
 #  Can also use -L to link to the explicit libary path 
-BLAS_LIB = -lblas
-LAPACK_LIB = -llapack
+#BLAS_LIB = -lblas
+#LAPACK_LIB = -llapack
 
 # Specify the flags for Lua headers and libraries (only needed for Lua frontend)
 # Recommended: build lua in the current directory, and link against this local version
 # LUA_INC = -I./lua-5.2.4/install/include
 # LUA_LIB = -L./lua-5.2.4/install/lib -llua -ldl -lm
-LUA_INC = -I./lua-5.2.4/install/include
-LUA_LIB = -L./lua-5.2.4/install/lib -llua -ldl -lm
+#LUA_INC = -I./lua-5.2.4/install/include
+#LUA_LIB = -L./lua-5.2.4/install/lib -llua -ldl -lm
 
 # OPTIONAL
 # Typically if installed,
@@ -33,14 +33,14 @@ LUA_LIB = -L./lua-5.2.4/install/lib -llua -ldl -lm
 #  or, if Fedora and/or fftw is version 3 but named fftw rather than fftw3
 #  FTW3_LIB = -lfftw 
 #  May need to link libraries properly as with blas and lapack above
-FFTW3_INC =
-FFTW3_LIB = -lfftw3
+#FFTW3_INC =
+#FFTW3_LIB = -lfftw3
 
 # Typically,
 #  PTHREAD_INC = -DHAVE_UNISTD_H
 #  PTHREAD_LIB = -lpthread
-PTHREAD_INC = -DHAVE_UNISTD_H
-PTHREAD_LIB = -lpthread
+#PTHREAD_INC = -DHAVE_UNISTD_H
+#PTHREAD_LIB = -lpthread
 
 # OPTIONAL
 # If not installed:
@@ -48,8 +48,8 @@ PTHREAD_LIB = -lpthread
 # Typically, if installed:
 #CHOLMOD_INC = -I/usr/include/suitesparse
 #CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
-CHOLMOD_INC = -I/usr/include/suitesparse
-CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
+#CHOLMOD_INC = -I/usr/include/suitesparse
+#CHOLMOD_LIB = -lcholmod -lamd -lcolamd -lcamd -lccolamd
 
 # Specify the MPI library
 # For example, on Fedora: dnf  install openmpi-devel
@@ -67,11 +67,11 @@ S4_DEBUG = 3
 S4_PROF = 0
 
 # Specify custom compilers if needed
-CXX = g++
-CC  = gcc
+#CXX = g++
+#CC  = gcc
 
 #CFLAGS += -O3 -fPIC
-CFLAGS = -Wall -O3 -msse3 -msse2 -msse -fPIC
+#CFLAGS = -Wall -O3 -msse3 -msse2 -msse -fPIC
 
 # options for Sampler module
 OPTFLAGS = -O3
@@ -340,7 +340,7 @@ FunctionSampler2D.so: modules/function_sampler_2d.c modules/function_sampler_2d.
 S4_pyext: objdir $(S4_LIBNAME)
 	# sh gensetup.py.sh $(OBJDIR) $(S4_LIBNAME) $(LIBS)
 	sh gensetup.py.sh $(OBJDIR) $(S4_LIBNAME) $(LIBS) $(BOOST_PREFIX)
-	pip3 install --upgrade ./
+	pip install --upgrade ./
 
 clean:
 	rm -rf $(OBJDIR)
