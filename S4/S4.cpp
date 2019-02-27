@@ -2953,69 +2953,77 @@ if(qi.imag() == 0){
 	return 0;
 }
 
-void Simulation_DestroySolution(S4_Simulation *S){
-	S4_TRACE("> Simulation_DestroySolution(S=%p) [omega=%f]\n", S, S->omega[0]);
-	Solution_ *sol;
-	if(NULL == S){
-		S4_TRACE("< Simulation_DestroySolution (early exit; S == NULL) [omega=%f]\n", S->omega[0]);
-		return;
-	}
-	sol = S->solution;
-	if(NULL == sol){
-		S4_TRACE("< Simulation_DestroySolution (early exit; sol == NULL) [omega=%f]\n", S->omega[0]);
-		return;
-	}
-	if(NULL != sol->ab){
-		S4_free(sol->ab);
-		sol->ab = NULL;
-	}
-	if(NULL != sol->solved){
-		free(sol->solved);
-		sol->solved = NULL;
-	if(NULL != sol->G){ S4_free(sol->G); sol->G = NULL; }
-	if(NULL != sol->kx){ S4_free(sol->kx); sol->kx = NULL; }
-	if(NULL != sol->layer_bands){
-		void **Lbands = sol->layer_bands;
-		void **Lsoln = sol->layer_solution;
-		S4_Layer *L = S->layer;
-		while(NULL != L){
-			// release Lbands
-			if(NULL != Lbands){
-				LayerBands *pB = (LayerBands*)(*Lbands);
-                S4_TRACE("LayerBand pointer: %p\n", pB);
-				if(NULL != pB){
-                    // abort();
-					if(NULL != pB->q){
-                        S4_TRACE("Freeing q!\n");
-						S4_free(pB->q);
-					}
-					S4_free(pB);
-				}
-			}
-			// release Lsoln
-			if(NULL != Lsoln){
-				LayerSolution *pS = (LayerSolution*)(*Lsoln);
-                S4_TRACE("LayerSolution pointer: %p\n", pS);
-				if(NULL != pS){
-					if(NULL != pS->ab){
-						S4_free(pS->ab);
-					}
-					S4_free(pS);
-				}
-			}
-			++Lbands;
-			++Lsoln;
-			L = L->next;
-		}
-		S4_free(sol->layer_bands);
-		sol->layer_bands = NULL;
-		sol->layer_solution = NULL;
-	}
-	free(S->solution); S->solution = NULL;
-	S4_free(S->solution);
-    S->solution = NULL;
+void Simulation_DestroySolution(S4_Simulation *S) {
+    S4_TRACE("> Simulation_DestroySolution(S=%p) [omega=%f]\n", S, S->omega[0]);
+    Solution_ *sol;
+    if (NULL == S) {
+        S4_TRACE("< Simulation_DestroySolution (early exit; S == NULL) [omega=%f]\n", S->omega[0]);
+        return;
+    }
+    sol = S->solution;
+    if (NULL == sol) {
+        S4_TRACE("< Simulation_DestroySolution (early exit; sol == NULL) [omega=%f]\n", S->omega[0]);
+        return;
+    }
+    if (NULL != sol->ab) {
+        S4_free(sol->ab);
+        sol->ab = NULL;
+    }
+    if (NULL != sol->solved) {
+        free(sol->solved);
+        sol->solved = NULL;
+        if (NULL != sol->G) {
+            S4_free(sol->G);
+            sol->G = NULL;
+        }
+        if (NULL != sol->kx) {
+            S4_free(sol->kx);
+            sol->kx = NULL;
+        }
+        if (NULL != sol->layer_bands) {
+            void **Lbands = sol->layer_bands;
+            void **Lsoln = sol->layer_solution;
+            S4_Layer *L = S->layer;
+            while (NULL != L) {
+                // release Lbands
+                if (NULL != Lbands) {
+                    LayerBands *pB = (LayerBands * )(*Lbands);
+                    S4_TRACE("LayerBand pointer: %p\n", pB);
+                    if (NULL != pB) {
+                        // abort();
+                        if (NULL != pB->q) {
+                            S4_TRACE("Freeing q!\n");
+                            S4_free(pB->q);
+                        }
+                        S4_free(pB);
+                    }
+                }
+                // release Lsoln
+                if (NULL != Lsoln) {
+                    LayerSolution *pS = (LayerSolution *) (*Lsoln);
+                    S4_TRACE("LayerSolution pointer: %p\n", pS);
+                    if (NULL != pS) {
+                        if (NULL != pS->ab) {
+                            S4_free(pS->ab);
+                        }
+                        S4_free(pS);
+                    }
+                }
+                ++Lbands;
+                ++Lsoln;
+                L = L->next;
+            }
+            S4_free(sol->layer_bands);
+            sol->layer_bands = NULL;
+            sol->layer_solution = NULL;
+        }
+        free(S->solution);
+        S->solution = NULL;
+        S4_free(S->solution);
+        S->solution = NULL;
 
-	S4_TRACE("< Simulation_DestroySolution [omega=%f]\n", S->omega[0]);
+        S4_TRACE("< Simulation_DestroySolution [omega=%f]\n", S->omega[0]);
+    }
 }
 
 void Simulation_DestroyLayerSolutions(S4_Simulation *S){
