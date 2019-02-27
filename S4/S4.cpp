@@ -225,7 +225,7 @@ struct LayerModes{
             phi_size = 0;
         }
 
-        q = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*(
+        q = (S4_complex*)S4_malloc(sizeof(S4_complex)*(
         2*n + // for q
         kp_size + phi_size + Epsilon_inv_size + Epsilon2_size
         ));
@@ -236,7 +236,7 @@ struct LayerModes{
 
         if(phi_is_null == 0){
             S4_TRACE("Load Phi is NOT NULL\n");
-            // phi = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*nn4);
+            // phi = (S4_complex*)S4_malloc(sizeof(S4_complex)*nn4);
             // for (size_t i = 0; i < phi_size; i++) {
             //     ar & bs::make_nvp("phi",phi[i]);
             // }
@@ -249,7 +249,7 @@ struct LayerModes{
         }
         if(kp_is_null == 0){
             S4_TRACE("Load kp is NOT NULL\n");
-            // kp = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*nn4);
+            // kp = (S4_complex*)S4_malloc(sizeof(S4_complex)*nn4);
             // for (size_t i = 0; i < kp_size; i++) {
             //     ar & bs::make_nvp("kp",kp[i]);
             // }
@@ -262,18 +262,18 @@ struct LayerModes{
         }
         // // free(q);
         // q = NULL;
-        // q = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*n2);
+        // q = (S4_complex*)S4_malloc(sizeof(S4_complex)*n2);
         // // free(kp);
         // kp = NULL;
-        // kp = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*nn4);
+        // kp = (S4_complex*)S4_malloc(sizeof(S4_complex)*nn4);
         // // free(phi);
         // phi = NULL;
         // // free(Epsilon2);
         // Epsilon2 = NULL;
-        // Epsilon2 = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*nn4);
+        // Epsilon2 = (S4_complex*)S4_malloc(sizeof(S4_complex)*nn4);
         // // free(Epsilon_inv);
         // Epsilon_inv = NULL;
-        // Epsilon_inv = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*nn);
+        // Epsilon_inv = (S4_complex*)S4_malloc(sizeof(S4_complex)*nn);
         S4_TRACE("Allocated mode memory!\n");
 
         // Now populate the arrays. Order here matters
@@ -301,13 +301,13 @@ struct LayerModes{
 struct Solution_{
 	S4_complex *ab;
 	int *solved;
-//    S4_Complex<double> *ab;
+//    S4_complex *ab;
 //    int *solved;
 //};
 //
 //struct LayerSolution{
     int n_G;
-//	S4_Complex<double> *ab; // length 2*glist.n
+//	S4_complex *ab; // length 2*glist.n
 //    int *solved;
 	// total size needed: 4n
     template <typename Archive>
@@ -335,7 +335,7 @@ struct Solution_{
         int n4 = 4*n_G;
         // ab = NULL;
         S4_TRACE("Allocating memory for ab\n");
-        ab = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*n4);
+        ab = (S4_complex*)S4_malloc(sizeof(S4_complex)*n4);
         S4_TRACE("Allocated memory for ab\n");
 
         // for (size_t i = 0; i < n2; i++) {
@@ -422,13 +422,13 @@ void load(Archive &ar, FieldCache &f, const unsigned int version)
     S4_TRACE("FieldCache.load: layer name = %s\n", f.layer);
     int nn4 = 4*f.n*f.n;
     if(P_is_null == 0){
-        f.P = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*nn4);
+        f.P = (S4_complex*)S4_malloc(sizeof(S4_complex)*nn4);
         ar & bs::make_nvp("P", bs::make_array(f.P, nn4));
     } else {
         f.P = NULL;
     }
     if(W_is_null == 0){
-        f.W = (S4_Complex<double>*)S4_malloc(sizeof(S4_Complex<double>)*nn4);
+        f.W = (S4_complex*)S4_malloc(sizeof(S4_complex)*nn4);
         ar & bs::make_nvp("W", bs::make_array(f.W, nn4));
     } else {
         f.W = NULL;
@@ -461,7 +461,7 @@ void Simulation_InvalidateFieldCache(S4_Simulation *S);
 S4_complex* Simulation_GetCachedField(S4_Simulation *S, const S4_Layer *layer);
 S4_complex* Simulation_GetCachedW(S4_Simulation *S, const S4_Layer *layer);
 void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const S4_complex *P, size_t Plen,
-                                const S4_Complex<double> *W, size_t Wlen);
+                                const S4_complex *W, size_t Wlen);
 
 void Layer_Destroy(S4_Layer *L){
 	S4_TRACE("> Layer_Destroy(L=%p)\n", L);
@@ -1838,37 +1838,37 @@ int Simulation_ComputeLayerSolution(S4_Simulation *S, S4_Layer *L, LayerModes **
 				S->n_layers, which_layer,
 				S->n_G,
 				S->kx, S->ky,
-				S4_Complex(S->omega[0], S->omega[1]),
+				S4_complex(S->omega[0], S->omega[1]),
 				lthick, lq, lepsinv, lepstype, lkp, lphi,
 				inc_back ? NULL : ab0, // length 2*n
 				inc_back ? ab0 : NULL, // bN
 				(*layer_solution));
 //TODO: Figure out if the "else" block for "solve all at once" is correct in the context of S4v2
-        }else{
-			// Solve all at once
-			S4_Complex *pab = sol->ab;
-			memset(pab, 0, sizeof(S4_Complex) * S->n_layers * n4);
-			if(!inc_back){
-				memcpy(pab, ab0, sizeof(S4_Complex) * n2);
-			}else{
-				memcpy(&pab[S->n_layers*n4 - n2], ab0, sizeof(S4_Complex) * n2);
-			}
-			const size_t lwork = 6*S->n_layers*n2*n2;
-			S4_Complex *work = (S4_Complex*)S4_malloc(sizeof(S4_Complex) * lwork);
-			size_t *iwork = (size_t*)S4_malloc(sizeof(size_t) * S->n_layers*n2);
-			SolveAll(
-				S->n_layers, S->n_G, S->kx, S->ky,
-				S4_Complex(S->omega[0], S->omega[1]),
-				lthick, lq, lepsinv, lepstype, lkp, lphi,
-				pab,
-				work, iwork, lwork
-			);
-			S4_free(iwork);
-			S4_free(work);
-			for(size_t i = 0; i < S->n_layers; ++i){
-				sol->solved[i] = 1;
-			}
-		}
+//        }else{
+//			// Solve all at once
+//			S4_complex *pab = sol->ab;
+//			memset(pab, 0, sizeof(S4_complex) * S->n_layers * n4);
+//			if(!inc_back){
+//				memcpy(pab, ab0, sizeof(S4_complex) * n2);
+//			}else{
+//				memcpy(&pab[S->n_layers*n4 - n2], ab0, sizeof(S4_complex) * n2);
+//			}
+//			const size_t lwork = 6*S->n_layers*n2*n2;
+//			S4_complex *work = (S4_complex*)S4_malloc(sizeof(S4_complex) * lwork);
+//			size_t *iwork = (size_t*)S4_malloc(sizeof(size_t) * S->n_layers*n2);
+//			SolveAll(
+//				S->n_layers, S->n_G, S->kx, S->ky,
+//				S4_complex(S->omega[0], S->omega[1]),
+//				lthick, lq, lepsinv, lepstype, lkp, lphi,
+//				pab,
+//				work, iwork, lwork
+//			);
+//			S4_free(iwork);
+//			S4_free(work);
+//			for(size_t i = 0; i < S->n_layers; ++i){
+//				sol->solved[i] = 1;
+//			}
+//		}
 		S4_free(ab0);
 	}else if(2 == S->exc.type){
 		Excitation_Exterior *ext = &(S->exc.sub.exterior);
@@ -2441,7 +2441,7 @@ int Simulation_GetPropagationConstants(S4_Simulation *S, S4_Layer *L, double *q)
 		return -1;
 	}
 
-    // layer_modes->q contains 2*n S4_Complex. The pointer to q
+    // layer_modes->q contains 2*n S4_complex. The pointer to q
     // passed in to this function hopefully points to a memory space that can
     // fit 4*n doubles (2 * 2n)
 //	for(int i = 0; i < 2*n; ++i){
@@ -2726,45 +2726,45 @@ S4_Layer* Simulation_GetLayerByName(const S4_Simulation *S, const char *name, in
 	S4_TRACE("< Simulation_GetLayerByName (failed; name not found) [omega=%f]\n", S->omega[0]);
 	return NULL;
 }
-
-static void output_povray_shape(FILE *f, shape *s, double t){
-	switch(s->type){
-	case CIRCLE:
-		fprintf(f, "cylinder{\n");
-		fprintf(f, "\t<0,0,0>, <0,0,%f>, %f\n", t, s->vtab.circle.radius);
-		break;
-	case ELLIPSE:
-		fprintf(f, "cylinder{\n");
-		fprintf(f, "\t<0,0,0>, <0,0,%f>, 1\n", t);
-		fprintf(f, "\tscale +x*%f\n", s->vtab.ellipse.halfwidth[0]);
-		fprintf(f, "\tscale +y*%f\n", s->vtab.ellipse.halfwidth[1]);
-		break;
-	case RECTANGLE:
-		fprintf(f, "box{\n");
-		fprintf(f, "\t<-1,-1,0>, <1,1,%f>\n", t);
-		fprintf(f, "\tscale +x*%f\n", s->vtab.rectangle.halfwidth[0]);
-		fprintf(f, "\tscale +y*%f\n", s->vtab.rectangle.halfwidth[1]);
-		break;
-	case POLYGON:
-		fprintf(f, "prism{\n");
-		fprintf(f, "\tlinear_spline\n");
-		fprintf(f, "\t0, %f, %d,\n", t, s->vtab.polygon.n_vertices);
-		for(int i = 0; i < s->vtab.polygon.n_vertices; ++i){
-			fprintf(f, "\t<%f,%f>%c\n",
-				s->vtab.polygon.vertex[2*i+0],
-				s->vtab.polygon.vertex[2*i+1],
-				i+1 == s->vtab.polygon.n_vertices ? ' ' : ','
-			);
-		}
-		break;
-	default:
-		break;
-	}
-	fprintf(f, "\trotate +z*%f\n", s->angle * 180./M_PI);
-	fprintf(f, "\ttranslate +x*%f\n", s->center[0]);
-	fprintf(f, "\ttranslate +y*%f\n", s->center[1]);
-	fprintf(f, "}\n");
-}
+// TODO: I think this is from S4v1
+//static void output_povray_shape(FILE *f, shape *s, double t){
+//	switch(s->type){
+//	case CIRCLE:
+//		fprintf(f, "cylinder{\n");
+//		fprintf(f, "\t<0,0,0>, <0,0,%f>, %f\n", t, s->vtab.circle.radius);
+//		break;
+//	case ELLIPSE:
+//		fprintf(f, "cylinder{\n");
+//		fprintf(f, "\t<0,0,0>, <0,0,%f>, 1\n", t);
+//		fprintf(f, "\tscale +x*%f\n", s->vtab.ellipse.halfwidth[0]);
+//		fprintf(f, "\tscale +y*%f\n", s->vtab.ellipse.halfwidth[1]);
+//		break;
+//	case RECTANGLE:
+//		fprintf(f, "box{\n");
+//		fprintf(f, "\t<-1,-1,0>, <1,1,%f>\n", t);
+//		fprintf(f, "\tscale +x*%f\n", s->vtab.rectangle.halfwidth[0]);
+//		fprintf(f, "\tscale +y*%f\n", s->vtab.rectangle.halfwidth[1]);
+//		break;
+//	case POLYGON:
+//		fprintf(f, "prism{\n");
+//		fprintf(f, "\tlinear_spline\n");
+//		fprintf(f, "\t0, %f, %d,\n", t, s->vtab.polygon.n_vertices);
+//		for(int i = 0; i < s->vtab.polygon.n_vertices; ++i){
+//			fprintf(f, "\t<%f,%f>%c\n",
+//				s->vtab.polygon.vertex[2*i+0],
+//				s->vtab.polygon.vertex[2*i+1],
+//				i+1 == s->vtab.polygon.n_vertices ? ' ' : ','
+//			);
+//		}
+//		break;
+//	default:
+//		break;
+//	}
+//	fprintf(f, "\trotate +z*%f\n", s->angle * 180./M_PI);
+//	fprintf(f, "\ttranslate +x*%f\n", s->center[0]);
+//	fprintf(f, "\ttranslate +y*%f\n", s->center[1]);
+//	fprintf(f, "}\n");
+//}
 
 int Simulation_OutputStructurePOVRay(S4_Simulation *S, FILE *fp){
 	S4_TRACE("> Simulation_OutputStructurePOVRay(S=%p)\n", S);
@@ -3175,7 +3175,7 @@ int Simulation_OutputLayerPatternRealization(S4_Simulation *S, S4_Layer *layer, 
 				double theta = (f[0])*r[0] + (f[1])*r[1];
 				double ca = cos(2*M_PI*theta);
 				double sa = sin(2*M_PI*theta);
-				//z += S4_Complex(ft[0],ft[1]) * std::exp(S4_Complex(0,theta));
+				//z += S4_complex(ft[0],ft[1]) * std::exp(S4_complex(0,theta));
 				z[0] += ft[0]*ca - ft[1]*sa;
 				z[1] += ft[0]*sa + ft[1]*ca;
 			}
@@ -3357,7 +3357,7 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
 	RNP::TBLAS::Copy(n4, Lsoln,1, ab,1);
 	//RNP::IO::PrintVector(n4, ab, 1);
 	TranslateAmplitudes(S->n_G, Lmodes->q, L->thickness, dz, ab);
-	size_t snxy[2] = { nxy[0], nxy[1] };
+    size_t snxy[2] = { (size_t)nxy[0], (size_t)nxy[1] };
     S4_complex *P = NULL;
     S4_complex *W = NULL;
     S4_complex *epsilon = NULL;
@@ -3365,8 +3365,8 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
     S4_TRACE("Layer = %s\n", L->name);
     if(S->options.use_weismann_formulation > 0) {
         S4_TRACE("Constructing P and W\n");
-        P = Simulation_GetCachedField((const Simulation *)S, (const Layer *)L);
-        W = Simulation_GetCachedW((const Simulation *)S, (const Layer *)L);
+        P = Simulation_GetCachedField((const S4_Simulation *)S, (const S4_Layer *)L);
+        W = Simulation_GetCachedW((const S4_Simulation *)S, (const S4_Layer *)L);
         // TODO: Need to build out an array of epsilon values at each each grid
         // point, and pass this array into GetFieldOnGridImproved so it can be
         // indexed into when computing real space reconstructions of E from
@@ -3399,18 +3399,18 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
                 double r[2] = {
                     ruv[0] * S->Lr[0] + ruv[1] * S->Lr[2],
                     ruv[0] * S->Lr[1] + ruv[1] * S->Lr[3] };
-                int result  = Pattern_GetShape(&(L->pattern), r, &shape_index, NULL);
+                int result  = Pattern_GetShape(&(L->pat), r, &shape_index, NULL);
                 if (result == 0) {
                     M = Simulation_GetMaterialByIndex(S, L->pattern.shapes[shape_index].tag);
                 } else {
-                    M = Simulation_GetMaterialByName(S, L->material, NULL);
+                    M = Simulation_GetMaterialByName(S, L->name, NULL);
                 }
                 // If M.type = 0 then epsilon is a scalar, if M.type = 1 epsilon is a
                 // tensor. IDK what to do with a tensor epsilon
                 if(0 != M->type){
                     return -1;
                 }
-                S4_Complex eps_val(M->eps.s[0], M->eps.s[1]);
+                S4_complex eps_val(M->eps.s[0], M->eps.s[1]);
                 /* printf("%f, %f, %f, %s, %f, %f\n", zz, r[0], r[1], M->name, M->eps.s[0], M->eps.s[1]); */
                 /* printf("%f, %f, %f, %f, %f", zz, r[0], r[1], M->eps.s[0], M->eps.s[1]); */
                 epsilon[iu+iv*nxy[0]] = eps_val;
@@ -3424,18 +3424,18 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
         S4_TRACE("Using Weismann Formulation\n");
         S4_TRACE("############################\n");
         GetFieldOnGridImproved(
-            S->n_G, S->solution->G, S->solution->kx, S->solution->ky, S4_complex(S->omega[0],S->omega[1]),
+                S->n_G, S->G, S->kx, S->ky, S4_complex(S->omega[0],S->omega[1]),
             Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, P, W, epsilon, Lmodes->epstype,
             ab, snxy,
-            reinterpret_cast<S4_Complex*>(E),
-            reinterpret_cast<S4_Complex*>(H)
+            reinterpret_cast<S4_complex*>(E),
+            reinterpret_cast<S4_complex*>(H)
         );
         S4_free(epsilon);
     } else {
         GetFieldOnGrid(
-            S->n_G, S->solution->G, S->solution->kx, S->solution->ky, S4_complex(S->omega[0],S->omega[1]),
+		S->n_G, S->G, S->kx, S->ky, S4_complex(S->omega[0],S->omega[1]),
             Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
-            ab, snxy,
+		ab, snxy, NULL,
             reinterpret_cast<S4_complex*>(E),
             reinterpret_cast<S4_complex*>(H)
         );
@@ -3920,7 +3920,6 @@ void Simulation_InvalidateFieldCache(S4_Simulation *S){
 		FieldCache *t = S->field_cache;
 		S->field_cache = S->field_cache->next;
 
-        S4_free(t->P);
         S4_free(t->W);
         // TODO: who is correct here? Went with kwrobert b/c it post-dates victorliu
         // The P pointer is just t+1, so don't S4_free it! - Victor Liu
@@ -3928,7 +3927,9 @@ void Simulation_InvalidateFieldCache(S4_Simulation *S){
         // a layer in it's own memory space, not a pointer to a layer object
         // So we need to free that memory. Allocated with strdup(), so need to
         // use normal free() - K. W. Robertson
-        free(t->layer);
+        S4_free(t->P);
+//        free(t->layer);
+//        S4_free(t->layer);
 		S4_free(t);
 	}
 	S->field_cache = NULL;
@@ -3942,9 +3943,9 @@ S4_complex* Simulation_GetCachedField(const S4_Simulation *S, const S4_Layer *la
 	while(NULL != f){
         S4_TRACE("> Simulation_GetCachedField: FieldCache Layer name: %s (%p)\n", f->layer, f->layer);
 //      Commented Below is what is in S4v2
-        //		if(layer == f->layer && S->n_G == f->n){
+        if(layer == f->layer && S->n_G == f->n){
 //      Below is from KW robertson branch
-        if(strcmp(layer->name, f->layer) == 0 && S->n_G == f->n){
+//        if(strcmp(layer->name, f->layer) == 0 && S->n_G == f->n){
             S4_TRACE("> Simulation_GetCachedField: Found matching layer!\n");
 			P = f->P;
 			break;
@@ -3955,14 +3956,17 @@ S4_complex* Simulation_GetCachedField(const S4_Simulation *S, const S4_Layer *la
 	return P;
 }
 
-S4_Complex* Simulation_GetCachedW(const S4_Simulation *S, const S4_Layer *layer){
+S4_complex* Simulation_GetCachedW(const S4_Simulation *S, const S4_Layer *layer){
 	S4_TRACE("> Simulation_GetCachedW(S=%p, layer=%p) [omega=%f]\n", S, layer, S->omega[0]);
-	S4_Complex *W = NULL;
+	S4_complex *W = NULL;
 	FieldCache *f = S->field_cache;
     S4_TRACE("> Simulation_GetCachedW: Input Layer name: %s (%p)\n", layer->name, layer->name);
 	while(NULL != f){
         S4_TRACE("> Simulation_GetCachedW: FieldCache Layer name: %s (%p)\n", f->layer, f->layer);
-		if(strcmp(layer->name, f->layer) == 0 && S->n_G == f->n){
+//      Commented Below is what is in S4v2
+        if(layer == f->layer && S->n_G == f->n){
+//      Below is from KW robertson branch
+//        if(strcmp(layer->name, f->layer) == 0 && S->n_G == f->n){
             S4_TRACE("> Simulation_GetCachedW: Found matching layer!\n");
 			W = f->W;
 			break;
@@ -3985,19 +3989,20 @@ void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t 
 }
 // TODO: does this version of Simulation_AddFieldToCache work with S4v2 (there's an
 // addition of the Weismann array
-void Simulation_AddFieldToCache(S4_Simulation *S, const S4_LayerID *layer, size_t n, const S4_Complex *P, size_t Plen,
-                                const S4_Complex *W, size_t Wlen){
+void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const S4_complex *P, size_t Plen,
+                                const S4_complex *W, size_t Wlen){
 	S4_TRACE("> Simulation_AddFieldToCache(S=%p, layer=%p, n=%d, P=%p) [omega=%f]\n", S, layer, n, P, S->omega[0]);
-	/* FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache)+sizeof(S4_Complex)*Plen+sizeof(S4_Complex)*Wlen); */
+	/* FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache)+sizeof(S4_complex)*Plen+sizeof(S4_complex)*Wlen); */
+	// TODO: reverted to using std::complex<double> instead of S4_complex
 	FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache));
-	f->P = (S4_Complex*)S4_malloc(sizeof(S4_Complex)*Plen);
-	memcpy(f->P, P, sizeof(S4_Complex)*Plen);
-    f->W = (S4_Complex*)S4_malloc(sizeof(S4_Complex)*Wlen);
-	memcpy(f->W, W, sizeof(S4_Complex)*Wlen);
+	f->P = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*Plen);
+	memcpy(f->P, P, sizeof(std::complex<double>)*Plen);
+    f->W = (std::complex<double>*)S4_malloc(sizeof(std::complex<double>)*Wlen);
+	memcpy(f->W, W, sizeof(std::complex<double>)*Wlen);
     S4_TRACE("> Simulation_AddFieldToCache: Input Layer name: %s (%p)\n", layer->name, layer->name);
-    f->layer = strdup(layer->name);
-    S4_TRACE("> Simulation_AddFieldToCache: FieldCache Layer name: %s (%p)\n", f->layer, f->layer);
-    S4_TRACE("> Simulation_AddFieldToCache: Name length =  %d\n", strlen(f->layer));
+    f->layer = layer;
+    S4_TRACE("> Simulation_AddFieldToCache: FieldCache Layer name: %s (%p)\n", f->layer->name, f->layer->name);
+    S4_TRACE("> Simulation_AddFieldToCache: Name length =  %d\n", strlen(f->layer->name));
 	f->n = n;
 	f->next = S->field_cache;
 	S->field_cache = f;
