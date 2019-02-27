@@ -86,24 +86,24 @@ S4r_LIBNAME = $(OBJDIR)/libS4r.a
 #### and PREFIX if you want to install boost to a different location 
 
 # Specify the paths to the boost include and lib directories
-BOOST_PREFIX=${CURDIR}/S4
-BOOST_INC = -I$(BOOST_PREFIX)/include
-BOOST_LIBS = -L$(BOOST_PREFIX)/lib/ -lboost_serialization
-BOOST_URL=https://sourceforge.net/projects/boost/files/boost/1.61.0/boost_1_61_0.tar.gz
-BOOST_FILE=boost.tar.gz
+#BOOST_PREFIX=${CURDIR}/S4
+#BOOST_INC = -I$(BOOST_PREFIX)/include
+#BOOST_LIBS = -L$(BOOST_PREFIX)/lib/ -lboost_serialization
+#BOOST_URL=https://sourceforge.net/projects/boost/files/boost/1.61.0/boost_1_61_0.tar.gz
+#BOOST_FILE=boost.tar.gz
 # Target for downloading boost from above URL
-$(BOOST_FILE):
-	wget $(BOOST_URL) -O $(BOOST_FILE)
+#$(BOOST_FILE):
+#	wget $(BOOST_URL) -O $(BOOST_FILE)
 
 # Target for extracting boost from archive and compiling. Depends on download target above
 ${CURDIR}/S4/lib: $(BOOST_FILE)  
-	$(eval BOOST_DIR := $(shell tar tzf $(BOOST_FILE) | sed -e 's@/.*@@' | uniq))
-	@echo Boost dir is $(BOOST_DIR)
-	tar -xzvf $(BOOST_FILE)
-	mv $(BOOST_DIR) boost_src
-	cd boost_src && ./bootstrap.sh --with-libraries=serialization --prefix=$(BOOST_PREFIX) && ./b2 install
+#	$(eval BOOST_DIR := $(shell tar tzf $(BOOST_FILE) | sed -e 's@/.*@@' | uniq))
+#	@echo Boost dir is $(BOOST_DIR)
+#	tar -xzvf $(BOOST_FILE)
+#	mv $(BOOST_DIR) boost_src
+#	cd boost_src && ./bootstrap.sh --with-libraries=serialization --prefix=$(BOOST_PREFIX) && ./b2 install
 # Final target which pulls everything together
-boost: $(BOOST_PREFIX)/lib
+#boost: $(BOOST_PREFIX)/lib
 
 ##################### DO NOT EDIT BELOW THIS LINE #####################
 
