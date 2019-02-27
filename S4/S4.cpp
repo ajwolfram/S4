@@ -2726,7 +2726,8 @@ S4_Layer* Simulation_GetLayerByName(const S4_Simulation *S, const char *name, in
 	S4_TRACE("< Simulation_GetLayerByName (failed; name not found) [omega=%f]\n", S->omega[0]);
 	return NULL;
 }
-// TODO: I think this is from S4v1
+
+// TODO: Reconciling POVray output with S4v1 will take work at another time
 //static void output_povray_shape(FILE *f, shape *s, double t){
 //	switch(s->type){
 //	case CIRCLE:
@@ -2765,430 +2766,431 @@ S4_Layer* Simulation_GetLayerByName(const S4_Simulation *S, const char *name, in
 //	fprintf(f, "\ttranslate +y*%f\n", s->center[1]);
 //	fprintf(f, "}\n");
 //}
+//
+//int Simulation_OutputStructurePOVRay(S4_Simulation *S, FILE *fp){
+//	S4_TRACE("> Simulation_OutputStructurePOVRay(S=%p)\n", S);
+//	int ret = 0;
+//	if(NULL == S){ ret = -1; }
+//	if(0 != ret){
+//		S4_TRACE("< Simulation_OutputStructurePOVRay (failed; ret = %d)\n", ret);
+//		return ret;
+//	}
+//
+//	if(NULL == S->solution){
+//		ret = Simulation_InitSolution(S);
+//		if(0 != ret){
+//			S4_TRACE("< Simulation_OutputStructurePOVRay (failed; Simulation_InitSolution returned %d)\n", ret);
+//			return ret;
+//		}
+//	}
+//
+//	// characteristic unit cell size
+//	double charsize = 1;
+//	{
+//		double u = hypot(S->Lr[0], S->Lr[1]);
+//		double v = hypot(S->Lr[2], S->Lr[3]);
+//		charsize = (u > v ? u : v);
+//	}
+//
+//	// get Voronoi defining points
+//	double vorpts[8];
+//	vorpts[0] = S->Lr[0];
+//	vorpts[1] = S->Lr[1];
+//	vorpts[2] = S->Lr[2];
+//	vorpts[3] = S->Lr[3];
+//	vorpts[4] = S->Lr[0] + S->Lr[2];
+//	vorpts[5] = S->Lr[1] + S->Lr[3];
+//	vorpts[6] = S->Lr[0] - S->Lr[2];
+//	vorpts[7] = S->Lr[1] - S->Lr[3];
+//	if(hypot(vorpts[6],vorpts[7]) < hypot(vorpts[4],vorpts[5])){
+//		vorpts[4] = vorpts[6];
+//		vorpts[5] = vorpts[7];
+//	}
+//
+//	FILE *f = fp;
+//	if(NULL == fp){ f = stdout; }
+//
+//	// output preample
+//	fprintf(f,
+//		"// -w320 -h240\n"
+//		"\n"
+//		"#version 3.6;\n"
+//		"\n"
+//		"#include \"colors.inc\"\n"
+//		"#include \"textures.inc\"\n"
+//		"#include \"shapes.inc\"\n"
+//		"\n"
+//		"global_settings {max_trace_level 5 assumed_gamma 1.0}\n"
+//		"\n"
+//		"camera {\n"
+//		"\tlocation <%f, %f, %f>\n"
+//		"\tdirection <0, 0,  2.25>\n"
+//		"\tright x*1.33\n"
+//		"\tlook_at <0,0,0>\n"
+//		"}\n"
+//		"\n",
+//		-3.0*charsize, 6.0*charsize, -9.0*charsize
+//	);
+//	fprintf(f,
+//		"#declare Dist=80.0;\n"
+//		"light_source {< -25, 50, -50> color White\n"
+//		"\tfade_distance Dist fade_power 2\n"
+//		"}\n"
+//		"light_source {< 50, 10,  -4> color Gray30\n"
+//		"\tfade_distance Dist fade_power 2\n"
+//		"}\n"
+//		"light_source {< 0, 100,  0> color Gray30\n"
+//		"\tfade_distance Dist fade_power 2\n"
+//		"}\n"
+//		"\n"
+//		"sky_sphere {\n"
+//		"\tpigment {\n"
+//		"\t\tgradient y\n"
+//		"\t\tcolor_map {\n"
+//		"\t\t\t[0, 1  color White color White]\n"
+//		"\t\t}\n"
+//		"\t}\n"
+//		"}\n"
+//		"\n"
+//		"#declare Xaxis = union{\n"
+//		"\tcylinder{\n"
+//		"\t\t<0,0,0>,<0.8,0,0>,0.05\n"
+//		"\t}\n"
+//		"\tcone{\n"
+//		"\t\t<0.8,0,0>, 0.1, <1,0,0>, 0\n"
+//		"\t}\n"
+//		"\ttexture { pigment { color Red } }\n"
+//		"}\n"
+//		"#declare Yaxis = union{\n"
+//		"\tcylinder{\n"
+//		"\t\t<0,0,0>,<0,0.8,0>,0.05\n"
+//		"\t}\n"
+//		"\tcone{\n"
+//		"\t\t<0,0.8,0>, 0.1, <0,1,0>, 0\n"
+//		"\t}\n"
+//		"\ttexture { pigment { color Green } }\n"
+//		"}\n"
+//		"#declare Zaxis = union{\n"
+//		"\tcylinder{\n"
+//		"\t<0,0,0>,<0,0,0.8>,0.05\n"
+//		"\t}\n"
+//		"\tcone{\n"
+//		"\t\t<0,0,0.8>, 0.1, <0,0,1>, 0\n"
+//		"\t}\n"
+//		"\ttexture { pigment { color Blue } }\n"
+//		"}\n"
+//		"#declare Axes = union{\n"
+//		"\tobject { Xaxis }\n"
+//		"\tobject { Yaxis }\n"
+//		"\tobject { Zaxis }\n"
+//		"}\n"
+//	);
+//
+//	// Output material texture definitions
+//	for(int i = 0; i < S->n_materials; ++i){
+//		const S4_Material *M = &(S->material[i]);
+//		if(NULL != M->name){
+//			if(0 == strcasecmp("air", M->name) || 0 == strcasecmp("vacuum", M->name)){
+//				fprintf(f, "#declare Material_%s = texture{ pigment{ color transmit 1.0 } }\n", M->name);
+//			}else{
+//				fprintf(f, "#declare Material_%s = texture{ pigment{ rgb <%f,%f,%f> } }\n",
+//					M->name,
+//					(double)rand()/(double)RAND_MAX,
+//					(double)rand()/(double)RAND_MAX,
+//					(double)rand()/(double)RAND_MAX
+//				);
+//			}
+//		}
+//	}
+//
+//	unsigned int layer_name_counter = 0;
+//	double layer_offset = 0;
+//	for(int i = 0; i < S->n_layers; ++i){
+//		const S4_Layer *L = &(S->layer[i]);
+//		const char *name = L->name;
+//		if(NULL == name){
+//			fprintf(f, "#declare S4_Layer_%u = union{\n", layer_name_counter++);
+//		}else{
+//			fprintf(f, "#declare S4_Layer_%s = union{\n", name);
+//		}
+//
+//		bool comment_out = false;
+//		if(L->material >= 0){
+//			if(0 == strcasecmp("air", S->material[L->material].name) || 0 == strcasecmp("vacuum", S->material[L->material].name)){
+//				comment_out = true;
+//			}
+//		}
+//
+//		if(comment_out){
+//			fprintf(f, "/*\n");
+//		}
+//		fprintf(f, "\tdifference{\n");
+//
+//		// output base uniform layer
+//		fprintf(f, "\t\tintersection{\n");
+//		for(unsigned int i = 0; i < 3; ++i){
+//			double dist = 0.5*hypot(vorpts[2*i+0], vorpts[2*i+1]);
+//			fprintf(f, "\t\t\tplane{ <%f,%f,0>, %f }\n",  vorpts[2*i+0],  vorpts[2*i+1], dist);
+//			fprintf(f, "\t\t\tplane{ <%f,%f,0>, %f }\n", -vorpts[2*i+0], -vorpts[2*i+1], dist);
+//		}
+//		fprintf(f, "\t\t\tplane{ <0,0,-1>, 0 }\n");
+//		fprintf(f, "\t\t\tplane{ <0,0,1>, %f }\n", L->thickness);
+//		fprintf(f, "\t\t}\n");
+//
+//
+//		fprintf(f, "// nshapes = %d\n", L->pattern.nshapes);
+//
+//
+//		for(int i = 0; i < L->pattern.nshapes; ++i){
+//			if(-1 == L->pattern.parent[i]){
+//				output_povray_shape(f, &L->pattern.shapes[i], L->thickness);
+//			}
+//		}
+//
+//		if(L->copy >= 0){
+//			const S4_Layer *Lcopy = &S->layer[L->copy];
+//			if(NULL != S->material[Lcopy->material].name){
+//				fprintf(f, "\t\ttexture { Material_%s }\n", S->material[Lcopy->material].name);
+//			}else{
+//				fprintf(f, "\t\ttexture { Material_ }\n");
+//			}
+//		}else{
+//			if(NULL != S->material[L->material].name){
+//				fprintf(f, "\t\ttexture { Material_%s }\n", S->material[L->material].name);
+//			}
+//		}
+//		fprintf(f, "\t}\n");
+//		if(comment_out){
+//			fprintf(f, "*/\n");
+//		}
+//
+//		for(int i = 0; i < L->pattern.nshapes; ++i){
+//			comment_out = false;
+//
+//			const S4_Material *m = &S->material[L->pattern.shapes[i].tag];
+//			if(NULL != m && NULL != m->name){
+//				if(0 == strcasecmp("air", m->name) || 0 == strcasecmp("vacuum", m->name)){
+//					comment_out = true;
+//				}
+//			}
+//
+//			if(comment_out){
+//				fprintf(f, "/*\n");
+//			}
+//
+//			fprintf(f, "\tdifference{\n");
+//			fprintf(f, "\t\tintersection{\n");
+//			output_povray_shape(f, &L->pattern.shapes[i], L->thickness);
+//			for(int j = i+1; j < L->pattern.nshapes; ++j){
+//				if(i == L->pattern.parent[j]){
+//					output_povray_shape(f, &L->pattern.shapes[j], L->thickness);
+//				}
+//			}
+//			fprintf(f, "\t\t\tplane{ <0,0,-1>, 0 }\n");
+//			fprintf(f, "\t\t\tplane{ <0,0,1>, %f }\n", L->thickness);
+//			fprintf(f, "\t\t}\n");
+//
+//
+//			fprintf(f, "\t\ttexture { Material_%s }\n", m != NULL ? m->name : "");
+//			fprintf(f, "\t}\n");
+//			if(comment_out){
+//				fprintf(f, "*/\n");
+//			}
+//		}
+//
+//		fprintf(f, "\ttranslate +z*%f\n", layer_offset);
+//		fprintf(f, "}\n");
+//
+//		layer_offset += L->thickness;
+//	}
+//
+//	// Output postamble
+//	fprintf(f,
+//		"#declare S4_Layers = union {\n"
+//	);
+//	layer_name_counter = 0;
+//	for(int i = 0; i < S->n_layers; ++i){
+//		const S4_Layer *L = &(S->layer[i]);
+//		const char *name = L->name;
+//		const char *comment = (0 < i && i+1 < S->n_layers) ? "" : "//";
+//		if(NULL == name){
+//			fprintf(f, "\t%sobject{ S4_Layer_%u }\n", comment, layer_name_counter++);
+//		}else{
+//			fprintf(f, "\t%sobject{ S4_Layer_%s }\n", comment, name);
+//		}
+//	}
+//	fprintf(f,
+//		"}\n"
+//		"\n"
+//		"Axes\n"
+//		"Layers\n"
+//	);
+//	S4_TRACE("< Simulation_OutputStructurePOVRay\n");
+//	return 0;
+//}
+//
+//int Simulation_OutputLayerPatternDescription(S4_Simulation *S, S4_Layer *layer, FILE *fp){
+//	S4_TRACE("> Simulation_OutputLayerPatternDescription(S=%p, layer=%p)\n",
+//		S, layer);
+//	int ret = 0;
+//	if(NULL == S){ ret = -1; }
+//	if(NULL == layer){ ret = -2; }
+//	if(0 != ret){
+//		S4_TRACE("< Simulation_OutputLayerPatternDescription (failed; ret = %d)\n", ret);
+//		return ret;
+//	}
+//
+//	const double *L = &S->Lr[0];
+//
+//	FILE *f = fp;
+//	if(NULL == fp){ f = stdout; }
+//
+//	double scale[2] = {4*72, 4*72};
+//	fprintf(f, "%f %f scale\n", scale[0], scale[1]);
+//	fprintf(f, "%f setlinewidth\n", 2./scale[0]);
+//	fprintf(f, "%f %f translate\n", 8.5*0.5*72/scale[0], 11*0.5*72/scale[1]);
+//	// Draw the origin cross
+//	fprintf(f, "newpath %f %f moveto %f %f lineto stroke\n", -0.05, 0.00, 0.05, 0.00);
+//	fprintf(f, "newpath %f %f moveto %f %f lineto stroke\n", 0.00, -0.05, 0.00, 0.05);
+//
+//	// Draw the clip marks
+//	fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto\nstroke\n",
+//		0.55*L[0]+0.50*L[2], 0.55*L[1]+0.50*L[3],
+//		0.50*L[0]+0.50*L[2], 0.50*L[1]+0.50*L[3],
+//		0.50*L[0]+0.55*L[2], 0.50*L[1]+0.55*L[3]);
+//	fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto\nstroke\n",
+//		-0.50*L[0]+0.55*L[2], -0.50*L[1]+0.55*L[3],
+//		-0.50*L[0]+0.50*L[2], -0.50*L[1]+0.50*L[3],
+//		-0.55*L[0]+0.50*L[2], -0.55*L[1]+0.50*L[3]);
+//	fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto\nstroke\n",
+//		-0.55*L[0]-0.50*L[2], -0.55*L[1]-0.50*L[3],
+//		-0.50*L[0]-0.50*L[2], -0.50*L[1]-0.50*L[3],
+//		-0.50*L[0]-0.55*L[2], -0.50*L[1]-0.55*L[3]);
+//	fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto\nstroke\n",
+//		0.50*L[0]-0.55*L[2], 0.50*L[1]-0.55*L[3],
+//		0.50*L[0]-0.50*L[2], 0.50*L[1]-0.50*L[3],
+//		0.55*L[0]-0.50*L[2], 0.55*L[1]-0.50*L[3]);
+//
+//	// Draw the patterns
+//	for(int i = 0; i < layer->pattern.nshapes; ++i){
+//		shape *s = &layer->pattern.shapes[i];
+//		fprintf(f, "gsave %f %f translate %f rotate\n", s->center[0], s->center[1], s->angle * 180./M_PI);
+//		switch(s->type){
+//		case CIRCLE:
+//			fprintf(f, "newpath 0 0 %f 0 360 arc closepath stroke\n", s->vtab.circle.radius);
+//			break;
+//		case ELLIPSE:
+//			fprintf(f, "gsave 1 %f scale ", s->vtab.ellipse.halfwidth[1]/s->vtab.ellipse.halfwidth[0]);
+//			fprintf(f, "newpath 0 0 %f 0 360 arc closepath stroke ", s->vtab.ellipse.halfwidth[0]);
+//			fprintf(f, "grestore\n");
+//			break;
+//		case RECTANGLE:
+//			fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto %f %f lineto closepath stroke\n",
+//				-s->vtab.rectangle.halfwidth[0], -s->vtab.rectangle.halfwidth[1],
+//				 s->vtab.rectangle.halfwidth[0], -s->vtab.rectangle.halfwidth[1],
+//				 s->vtab.rectangle.halfwidth[0],  s->vtab.rectangle.halfwidth[1],
+//				-s->vtab.rectangle.halfwidth[0],  s->vtab.rectangle.halfwidth[1]);
+//			break;
+//		case POLYGON:
+//			if(s->vtab.polygon.n_vertices >= 3){
+//				fprintf(f, "newpath %f %f moveto ", s->vtab.polygon.vertex[0], s->vtab.polygon.vertex[1]);
+//				for(int j = 1; j < s->vtab.polygon.n_vertices; ++j){
+//					fprintf(f, "%f %f lineto ", s->vtab.polygon.vertex[2*j+0], s->vtab.polygon.vertex[2*j+1]);
+//				}
+//				fprintf(f, "closepath stroke\n");
+//			}
+//			break;
+//		default:
+//			break;
+//		}
+//		fprintf(f, "grestore\n");
+//	}
+//
+//	fprintf(f, "showpage\n");
+//
+//
+//	S4_TRACE("< Simulation_OutputLayerPatternDescription\n");
+//	return 0;
+//}
+//
+//int Simulation_OutputLayerPatternRealization(S4_Simulation *S, S4_Layer *layer, int nx, int ny, FILE *fp){
+//	S4_TRACE("> Simulation_OutputLayerPatternRealization(S=%p, layer=%p, nx=%d, ny=%d)\n",
+//		S, layer, nx, ny);
+//	if(NULL == S){
+//		S4_TRACE("< Simulation_OutputLayerPatternRealization (failed; S == NULL)\n");
+//		return -1;
+//	}
+//	if(NULL == layer){
+//		S4_TRACE("< Simulation_OutputLayerPatternRealization (failed; layer == NULL)\n");
+//		return -2;
+//	}
+//
+//	if(NULL == S->solution){
+//		int error = Simulation_InitSolution(S);
+//		if(0 != error){
+//			S4_TRACE("< Simulation_OutputLayerPatternRealization (failed; Simulation_InitSolution returned %d)\n", error);
+//			return error;
+//		}
+//	}
+//
+//	FILE *f = fp;
+//	if(NULL == fp){ f = stdout; }
+//
+//	double *values = (double*)S4_malloc(sizeof(double)*2*(layer->pattern.nshapes+1));
+//	for(int i = -1; i < layer->pattern.nshapes; ++i){
+//		const S4_Material *M;
+//		if(-1 == i){
+//			M = &S->material[layer->material];
+//		}else{
+//			M = &S->material[layer->pattern.shapes[i].tag];
+//		}
+//		if(0 == M->type){
+//			values[2*(i+1)+0] = M->eps.s[0];
+//			values[2*(i+1)+1] = M->eps.s[1];
+//		}else{
+//			values[2*(i+1)+0] = M->eps.abcde[8];
+//			values[2*(i+1)+1] = M->eps.abcde[9];
+//		}
+//	}
+//
+//	const double unit_cell_size = Simulation_GetUnitCellSize(S);
+//	const int ndim = (0 == S->Lr[2] && 0 == S->Lr[3]) ? 1 : 2;
+//	for(int j = 0; j < ny; ++j){
+//		for(int i = 0; i < nx; ++i){
+//			double ruv[2] = {
+//				-0.5 + ((double)i+0.5)/(double)nx,
+//				-0.5 + ((double)j+0.5)/(double)ny };
+//			double r[2] = {
+//				ruv[0] * S->Lr[0] + ruv[1] * S->Lr[2],
+//				ruv[0] * S->Lr[1] + ruv[1] * S->Lr[3] };
+//			double z[2] = {0,0};
+//			for(int g = 0; g < S->n_G; ++g){
+//				double f[2] = {
+//					S->G[2*g+0] * S->Lk[0] + S->G[2*g+1] * S->Lk[2],
+//					S->G[2*g+0] * S->Lk[1] + S->G[2*g+1] * S->Lk[3]
+//				};
+//				double ft[2];
+//				Pattern_GetFourierTransform(&layer->pattern, values, f, ndim, unit_cell_size, ft);
+//
+//				//double theta = (S->k[0] + f[0])*r[0] + (S->k[1] + f[1])*r[1];
+//				double theta = (f[0])*r[0] + (f[1])*r[1];
+//				double ca = cos(2*M_PI*theta);
+//				double sa = sin(2*M_PI*theta);
+//				//z += S4_complex(ft[0],ft[1]) * std::exp(S4_complex(0,theta));
+//				z[0] += ft[0]*ca - ft[1]*sa;
+//				z[1] += ft[0]*sa + ft[1]*ca;
+//			}
+//			fprintf(f, "%d\t%d\t%f\t%f\n", i, j, z[0], z[1]);
+//		}
+//		fprintf(f, "\n");
+//	}
+//
+//	S4_free(values);
+//
+//	S4_TRACE("< Simulation_OutputLayerPatternRealization\n");
+//	return 0;
+//}
 
-int Simulation_OutputStructurePOVRay(S4_Simulation *S, FILE *fp){
-	S4_TRACE("> Simulation_OutputStructurePOVRay(S=%p)\n", S);
-	int ret = 0;
-	if(NULL == S){ ret = -1; }
-	if(0 != ret){
-		S4_TRACE("< Simulation_OutputStructurePOVRay (failed; ret = %d)\n", ret);
-		return ret;
-	}
-
-	if(NULL == S->solution){
-		ret = Simulation_InitSolution(S);
-		if(0 != ret){
-			S4_TRACE("< Simulation_OutputStructurePOVRay (failed; Simulation_InitSolution returned %d)\n", ret);
-			return ret;
-		}
-	}
-
-	// characteristic unit cell size
-	double charsize = 1;
-	{
-		double u = hypot(S->Lr[0], S->Lr[1]);
-		double v = hypot(S->Lr[2], S->Lr[3]);
-		charsize = (u > v ? u : v);
-	}
-
-	// get Voronoi defining points
-	double vorpts[8];
-	vorpts[0] = S->Lr[0];
-	vorpts[1] = S->Lr[1];
-	vorpts[2] = S->Lr[2];
-	vorpts[3] = S->Lr[3];
-	vorpts[4] = S->Lr[0] + S->Lr[2];
-	vorpts[5] = S->Lr[1] + S->Lr[3];
-	vorpts[6] = S->Lr[0] - S->Lr[2];
-	vorpts[7] = S->Lr[1] - S->Lr[3];
-	if(hypot(vorpts[6],vorpts[7]) < hypot(vorpts[4],vorpts[5])){
-		vorpts[4] = vorpts[6];
-		vorpts[5] = vorpts[7];
-	}
-
-	FILE *f = fp;
-	if(NULL == fp){ f = stdout; }
-
-	// output preample
-	fprintf(f,
-		"// -w320 -h240\n"
-		"\n"
-		"#version 3.6;\n"
-		"\n"
-		"#include \"colors.inc\"\n"
-		"#include \"textures.inc\"\n"
-		"#include \"shapes.inc\"\n"
-		"\n"
-		"global_settings {max_trace_level 5 assumed_gamma 1.0}\n"
-		"\n"
-		"camera {\n"
-		"\tlocation <%f, %f, %f>\n"
-		"\tdirection <0, 0,  2.25>\n"
-		"\tright x*1.33\n"
-		"\tlook_at <0,0,0>\n"
-		"}\n"
-		"\n",
-		-3.0*charsize, 6.0*charsize, -9.0*charsize
-	);
-	fprintf(f,
-		"#declare Dist=80.0;\n"
-		"light_source {< -25, 50, -50> color White\n"
-		"\tfade_distance Dist fade_power 2\n"
-		"}\n"
-		"light_source {< 50, 10,  -4> color Gray30\n"
-		"\tfade_distance Dist fade_power 2\n"
-		"}\n"
-		"light_source {< 0, 100,  0> color Gray30\n"
-		"\tfade_distance Dist fade_power 2\n"
-		"}\n"
-		"\n"
-		"sky_sphere {\n"
-		"\tpigment {\n"
-		"\t\tgradient y\n"
-		"\t\tcolor_map {\n"
-		"\t\t\t[0, 1  color White color White]\n"
-		"\t\t}\n"
-		"\t}\n"
-		"}\n"
-		"\n"
-		"#declare Xaxis = union{\n"
-		"\tcylinder{\n"
-		"\t\t<0,0,0>,<0.8,0,0>,0.05\n"
-		"\t}\n"
-		"\tcone{\n"
-		"\t\t<0.8,0,0>, 0.1, <1,0,0>, 0\n"
-		"\t}\n"
-		"\ttexture { pigment { color Red } }\n"
-		"}\n"
-		"#declare Yaxis = union{\n"
-		"\tcylinder{\n"
-		"\t\t<0,0,0>,<0,0.8,0>,0.05\n"
-		"\t}\n"
-		"\tcone{\n"
-		"\t\t<0,0.8,0>, 0.1, <0,1,0>, 0\n"
-		"\t}\n"
-		"\ttexture { pigment { color Green } }\n"
-		"}\n"
-		"#declare Zaxis = union{\n"
-		"\tcylinder{\n"
-		"\t<0,0,0>,<0,0,0.8>,0.05\n"
-		"\t}\n"
-		"\tcone{\n"
-		"\t\t<0,0,0.8>, 0.1, <0,0,1>, 0\n"
-		"\t}\n"
-		"\ttexture { pigment { color Blue } }\n"
-		"}\n"
-		"#declare Axes = union{\n"
-		"\tobject { Xaxis }\n"
-		"\tobject { Yaxis }\n"
-		"\tobject { Zaxis }\n"
-		"}\n"
-	);
-
-	// Output material texture definitions
-	for(int i = 0; i < S->n_materials; ++i){
-		const S4_Material *M = &(S->material[i]);
-		if(NULL != M->name){
-			if(0 == strcasecmp("air", M->name) || 0 == strcasecmp("vacuum", M->name)){
-				fprintf(f, "#declare Material_%s = texture{ pigment{ color transmit 1.0 } }\n", M->name);
-			}else{
-				fprintf(f, "#declare Material_%s = texture{ pigment{ rgb <%f,%f,%f> } }\n",
-					M->name,
-					(double)rand()/(double)RAND_MAX,
-					(double)rand()/(double)RAND_MAX,
-					(double)rand()/(double)RAND_MAX
-				);
-			}
-		}
-	}
-
-	unsigned int layer_name_counter = 0;
-	double layer_offset = 0;
-	for(int i = 0; i < S->n_layers; ++i){
-		const S4_Layer *L = &(S->layer[i]);
-		const char *name = L->name;
-		if(NULL == name){
-			fprintf(f, "#declare S4_Layer_%u = union{\n", layer_name_counter++);
-		}else{
-			fprintf(f, "#declare S4_Layer_%s = union{\n", name);
-		}
-
-		bool comment_out = false;
-		if(L->material >= 0){
-			if(0 == strcasecmp("air", S->material[L->material].name) || 0 == strcasecmp("vacuum", S->material[L->material].name)){
-				comment_out = true;
-			}
-		}
-
-		if(comment_out){
-			fprintf(f, "/*\n");
-		}
-		fprintf(f, "\tdifference{\n");
-
-		// output base uniform layer
-		fprintf(f, "\t\tintersection{\n");
-		for(unsigned int i = 0; i < 3; ++i){
-			double dist = 0.5*hypot(vorpts[2*i+0], vorpts[2*i+1]);
-			fprintf(f, "\t\t\tplane{ <%f,%f,0>, %f }\n",  vorpts[2*i+0],  vorpts[2*i+1], dist);
-			fprintf(f, "\t\t\tplane{ <%f,%f,0>, %f }\n", -vorpts[2*i+0], -vorpts[2*i+1], dist);
-		}
-		fprintf(f, "\t\t\tplane{ <0,0,-1>, 0 }\n");
-		fprintf(f, "\t\t\tplane{ <0,0,1>, %f }\n", L->thickness);
-		fprintf(f, "\t\t}\n");
-
-
-		fprintf(f, "// nshapes = %d\n", L->pattern.nshapes);
-
-
-		for(int i = 0; i < L->pattern.nshapes; ++i){
-			if(-1 == L->pattern.parent[i]){
-				output_povray_shape(f, &L->pattern.shapes[i], L->thickness);
-			}
-		}
-
-		if(L->copy >= 0){
-			const S4_Layer *Lcopy = &S->layer[L->copy];
-			if(NULL != S->material[Lcopy->material].name){
-				fprintf(f, "\t\ttexture { Material_%s }\n", S->material[Lcopy->material].name);
-			}else{
-				fprintf(f, "\t\ttexture { Material_ }\n");
-			}
-		}else{
-			if(NULL != S->material[L->material].name){
-				fprintf(f, "\t\ttexture { Material_%s }\n", S->material[L->material].name);
-			}
-		}
-		fprintf(f, "\t}\n");
-		if(comment_out){
-			fprintf(f, "*/\n");
-		}
-
-		for(int i = 0; i < L->pattern.nshapes; ++i){
-			comment_out = false;
-
-			const S4_Material *m = &S->material[L->pattern.shapes[i].tag];
-			if(NULL != m && NULL != m->name){
-				if(0 == strcasecmp("air", m->name) || 0 == strcasecmp("vacuum", m->name)){
-					comment_out = true;
-				}
-			}
-
-			if(comment_out){
-				fprintf(f, "/*\n");
-			}
-
-			fprintf(f, "\tdifference{\n");
-			fprintf(f, "\t\tintersection{\n");
-			output_povray_shape(f, &L->pattern.shapes[i], L->thickness);
-			for(int j = i+1; j < L->pattern.nshapes; ++j){
-				if(i == L->pattern.parent[j]){
-					output_povray_shape(f, &L->pattern.shapes[j], L->thickness);
-				}
-			}
-			fprintf(f, "\t\t\tplane{ <0,0,-1>, 0 }\n");
-			fprintf(f, "\t\t\tplane{ <0,0,1>, %f }\n", L->thickness);
-			fprintf(f, "\t\t}\n");
-
-
-			fprintf(f, "\t\ttexture { Material_%s }\n", m != NULL ? m->name : "");
-			fprintf(f, "\t}\n");
-			if(comment_out){
-				fprintf(f, "*/\n");
-			}
-		}
-
-		fprintf(f, "\ttranslate +z*%f\n", layer_offset);
-		fprintf(f, "}\n");
-
-		layer_offset += L->thickness;
-	}
-
-	// Output postamble
-	fprintf(f,
-		"#declare S4_Layers = union {\n"
-	);
-	layer_name_counter = 0;
-	for(int i = 0; i < S->n_layers; ++i){
-		const S4_Layer *L = &(S->layer[i]);
-		const char *name = L->name;
-		const char *comment = (0 < i && i+1 < S->n_layers) ? "" : "//";
-		if(NULL == name){
-			fprintf(f, "\t%sobject{ S4_Layer_%u }\n", comment, layer_name_counter++);
-		}else{
-			fprintf(f, "\t%sobject{ S4_Layer_%s }\n", comment, name);
-		}
-	}
-	fprintf(f,
-		"}\n"
-		"\n"
-		"Axes\n"
-		"Layers\n"
-	);
-	S4_TRACE("< Simulation_OutputStructurePOVRay\n");
-	return 0;
-}
-
-int Simulation_OutputLayerPatternDescription(S4_Simulation *S, S4_Layer *layer, FILE *fp){
-	S4_TRACE("> Simulation_OutputLayerPatternDescription(S=%p, layer=%p)\n",
-		S, layer);
-	int ret = 0;
-	if(NULL == S){ ret = -1; }
-	if(NULL == layer){ ret = -2; }
-	if(0 != ret){
-		S4_TRACE("< Simulation_OutputLayerPatternDescription (failed; ret = %d)\n", ret);
-		return ret;
-	}
-
-	const double *L = &S->Lr[0];
-
-	FILE *f = fp;
-	if(NULL == fp){ f = stdout; }
-
-	double scale[2] = {4*72, 4*72};
-	fprintf(f, "%f %f scale\n", scale[0], scale[1]);
-	fprintf(f, "%f setlinewidth\n", 2./scale[0]);
-	fprintf(f, "%f %f translate\n", 8.5*0.5*72/scale[0], 11*0.5*72/scale[1]);
-	// Draw the origin cross
-	fprintf(f, "newpath %f %f moveto %f %f lineto stroke\n", -0.05, 0.00, 0.05, 0.00);
-	fprintf(f, "newpath %f %f moveto %f %f lineto stroke\n", 0.00, -0.05, 0.00, 0.05);
-
-	// Draw the clip marks
-	fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto\nstroke\n",
-		0.55*L[0]+0.50*L[2], 0.55*L[1]+0.50*L[3],
-		0.50*L[0]+0.50*L[2], 0.50*L[1]+0.50*L[3],
-		0.50*L[0]+0.55*L[2], 0.50*L[1]+0.55*L[3]);
-	fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto\nstroke\n",
-		-0.50*L[0]+0.55*L[2], -0.50*L[1]+0.55*L[3],
-		-0.50*L[0]+0.50*L[2], -0.50*L[1]+0.50*L[3],
-		-0.55*L[0]+0.50*L[2], -0.55*L[1]+0.50*L[3]);
-	fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto\nstroke\n",
-		-0.55*L[0]-0.50*L[2], -0.55*L[1]-0.50*L[3],
-		-0.50*L[0]-0.50*L[2], -0.50*L[1]-0.50*L[3],
-		-0.50*L[0]-0.55*L[2], -0.50*L[1]-0.55*L[3]);
-	fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto\nstroke\n",
-		0.50*L[0]-0.55*L[2], 0.50*L[1]-0.55*L[3],
-		0.50*L[0]-0.50*L[2], 0.50*L[1]-0.50*L[3],
-		0.55*L[0]-0.50*L[2], 0.55*L[1]-0.50*L[3]);
-
-	// Draw the patterns
-	for(int i = 0; i < layer->pattern.nshapes; ++i){
-		shape *s = &layer->pattern.shapes[i];
-		fprintf(f, "gsave %f %f translate %f rotate\n", s->center[0], s->center[1], s->angle * 180./M_PI);
-		switch(s->type){
-		case CIRCLE:
-			fprintf(f, "newpath 0 0 %f 0 360 arc closepath stroke\n", s->vtab.circle.radius);
-			break;
-		case ELLIPSE:
-			fprintf(f, "gsave 1 %f scale ", s->vtab.ellipse.halfwidth[1]/s->vtab.ellipse.halfwidth[0]);
-			fprintf(f, "newpath 0 0 %f 0 360 arc closepath stroke ", s->vtab.ellipse.halfwidth[0]);
-			fprintf(f, "grestore\n");
-			break;
-		case RECTANGLE:
-			fprintf(f, "newpath %f %f moveto %f %f lineto %f %f lineto %f %f lineto closepath stroke\n",
-				-s->vtab.rectangle.halfwidth[0], -s->vtab.rectangle.halfwidth[1],
-				 s->vtab.rectangle.halfwidth[0], -s->vtab.rectangle.halfwidth[1],
-				 s->vtab.rectangle.halfwidth[0],  s->vtab.rectangle.halfwidth[1],
-				-s->vtab.rectangle.halfwidth[0],  s->vtab.rectangle.halfwidth[1]);
-			break;
-		case POLYGON:
-			if(s->vtab.polygon.n_vertices >= 3){
-				fprintf(f, "newpath %f %f moveto ", s->vtab.polygon.vertex[0], s->vtab.polygon.vertex[1]);
-				for(int j = 1; j < s->vtab.polygon.n_vertices; ++j){
-					fprintf(f, "%f %f lineto ", s->vtab.polygon.vertex[2*j+0], s->vtab.polygon.vertex[2*j+1]);
-				}
-				fprintf(f, "closepath stroke\n");
-			}
-			break;
-		default:
-			break;
-		}
-		fprintf(f, "grestore\n");
-	}
-
-	fprintf(f, "showpage\n");
-
-
-	S4_TRACE("< Simulation_OutputLayerPatternDescription\n");
-	return 0;
-}
-
-int Simulation_OutputLayerPatternRealization(S4_Simulation *S, S4_Layer *layer, int nx, int ny, FILE *fp){
-	S4_TRACE("> Simulation_OutputLayerPatternRealization(S=%p, layer=%p, nx=%d, ny=%d)\n",
-		S, layer, nx, ny);
-	if(NULL == S){
-		S4_TRACE("< Simulation_OutputLayerPatternRealization (failed; S == NULL)\n");
-		return -1;
-	}
-	if(NULL == layer){
-		S4_TRACE("< Simulation_OutputLayerPatternRealization (failed; layer == NULL)\n");
-		return -2;
-	}
-
-	if(NULL == S->solution){
-		int error = Simulation_InitSolution(S);
-		if(0 != error){
-			S4_TRACE("< Simulation_OutputLayerPatternRealization (failed; Simulation_InitSolution returned %d)\n", error);
-			return error;
-		}
-	}
-
-	FILE *f = fp;
-	if(NULL == fp){ f = stdout; }
-
-	double *values = (double*)S4_malloc(sizeof(double)*2*(layer->pattern.nshapes+1));
-	for(int i = -1; i < layer->pattern.nshapes; ++i){
-		const S4_Material *M;
-		if(-1 == i){
-			M = &S->material[layer->material];
-		}else{
-			M = &S->material[layer->pattern.shapes[i].tag];
-		}
-		if(0 == M->type){
-			values[2*(i+1)+0] = M->eps.s[0];
-			values[2*(i+1)+1] = M->eps.s[1];
-		}else{
-			values[2*(i+1)+0] = M->eps.abcde[8];
-			values[2*(i+1)+1] = M->eps.abcde[9];
-		}
-	}
-
-	const double unit_cell_size = Simulation_GetUnitCellSize(S);
-	const int ndim = (0 == S->Lr[2] && 0 == S->Lr[3]) ? 1 : 2;
-	for(int j = 0; j < ny; ++j){
-		for(int i = 0; i < nx; ++i){
-			double ruv[2] = {
-				-0.5 + ((double)i+0.5)/(double)nx,
-				-0.5 + ((double)j+0.5)/(double)ny };
-			double r[2] = {
-				ruv[0] * S->Lr[0] + ruv[1] * S->Lr[2],
-				ruv[0] * S->Lr[1] + ruv[1] * S->Lr[3] };
-			double z[2] = {0,0};
-			for(int g = 0; g < S->n_G; ++g){
-				double f[2] = {
-					S->G[2*g+0] * S->Lk[0] + S->G[2*g+1] * S->Lk[2],
-					S->G[2*g+0] * S->Lk[1] + S->G[2*g+1] * S->Lk[3]
-				};
-				double ft[2];
-				Pattern_GetFourierTransform(&layer->pattern, values, f, ndim, unit_cell_size, ft);
-
-				//double theta = (S->k[0] + f[0])*r[0] + (S->k[1] + f[1])*r[1];
-				double theta = (f[0])*r[0] + (f[1])*r[1];
-				double ca = cos(2*M_PI*theta);
-				double sa = sin(2*M_PI*theta);
-				//z += S4_complex(ft[0],ft[1]) * std::exp(S4_complex(0,theta));
-				z[0] += ft[0]*ca - ft[1]*sa;
-				z[1] += ft[0]*sa + ft[1]*ca;
-			}
-			fprintf(f, "%d\t%d\t%f\t%f\n", i, j, z[0], z[1]);
-		}
-		fprintf(f, "\n");
-	}
-
-	S4_free(values);
-
-	S4_TRACE("< Simulation_OutputLayerPatternRealization\n");
-	return 0;
-}
 int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], double fH[6]){
 	S4_TRACE("> Simulation_GetField(S=%p, r=%p (%f,%f,%f), fE=%p, fH=%p)\n",
 		S, r, (NULL == r ? 0 : r[0]), (NULL == r ? 0 : r[1]), (NULL == r ? 0 : r[2]), fE, fH);
@@ -3250,20 +3252,24 @@ int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], doubl
     S4_complex epsilon = 0;
     if(S->options.use_weismann_formulation > 0) {
         // I need to jump in right here and do a few thing
-        P = Simulation_GetCachedField((const S4_Simulation *)S, (const S4_Layer *)L);
-        W = Simulation_GetCachedW((const S4_Simulation *)S, (const S4_Layer *)L);
+        P = Simulation_GetCachedField(S, L);
+        W = Simulation_GetCachedW(S, L);
         const double xy[2] = {r[0], r[1]};
         const S4_Material *M;
-        int shape_index;
-        int result  = Pattern_GetShape(&(L->pattern), xy, &shape_index, NULL);
-        if (result == 0) {
-            M = Simulation_GetMaterialByIndex(S, L->pattern.shapes[shape_index].tag);
-        } else {
-            M = Simulation_GetMaterialByName(S, L->material, NULL);
+        // See below for similar changes to how materials are retrieved
+        if(NULL == L->pat){
+//                    const S4_Material *M;
+            if(L->copy < 0){
+                M = &S->material[L->material];
+            }else{
+                M = &S->material[S->layer[L->copy].material];
+            }
         }
         // If M.type = 0 then epsilon is a scalar, if M.type = 1 epsilon is a
         // tensor. IDK what to do with a tensor epsilon
+        // TODO: Implementation of complex Weismann
         if(0 != M->type){
+            fprintf(stderr, "Cannot use Weismann Formulation with tensor epsilon in material %s.\n", M->name);
             return -1;
         }
         epsilon = S4_complex(M->eps.s[0], M->eps.s[1]);
@@ -3272,14 +3278,14 @@ int Simulation_GetField(S4_Simulation *S, const double r[3], double fE[6], doubl
         S4_VERB(1, "Using Weismann Formulation\n");
         S4_TRACE("Using Weismann Formulation\n");
         GetFieldAtPointImproved(
-            S->n_G, S->solution->kx, S->solution->ky, S4_complex(S->omega[0],S->omega[1]),
-            Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, P, Lmodes->Epsilon2, epsilon, Lmodes->epstype,
+            S->n_G, S->kx, S->ky, S4_complex(S->omega[0],S->omega[1]),
+            Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, P, W, Lmodes->Epsilon2, epsilon, Lmodes->epstype,
             ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
     } else {
         GetFieldAtPoint(
-            S->n_G, S->solution->kx, S->solution->ky, S4_complex(S->omega[0],S->omega[1]),
-            Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
-            ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
+                S->n_G, S->kx, S->ky, S4_complex(S->omega[0],S->omega[1]),
+                Lmodes->q, Lmodes->kp, Lmodes->phi, Lmodes->Epsilon_inv, Lmodes->epstype,
+                ab, r, (NULL != fE ? efield : NULL) , (NULL != fH ? hfield : NULL), work);
     }
 	if(NULL != fE){
 		fE[0] = efield[0].real();
@@ -3358,15 +3364,15 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
 	//RNP::IO::PrintVector(n4, ab, 1);
 	TranslateAmplitudes(S->n_G, Lmodes->q, L->thickness, dz, ab);
     size_t snxy[2] = { (size_t)nxy[0], (size_t)nxy[1] };
-    S4_complex *P = NULL;
-    S4_complex *W = NULL;
-    S4_complex *epsilon = NULL;
+    S4_complex* P = NULL;
+    S4_complex* W = NULL;
+    S4_complex* epsilon = NULL;
     S4_TRACE("############################\n");
     S4_TRACE("Layer = %s\n", L->name);
     if(S->options.use_weismann_formulation > 0) {
         S4_TRACE("Constructing P and W\n");
-        P = Simulation_GetCachedField((const S4_Simulation *)S, (const S4_Layer *)L);
-        W = Simulation_GetCachedW((const S4_Simulation *)S, (const S4_Layer *)L);
+        P = Simulation_GetCachedField(S, L);
+        W = Simulation_GetCachedW( S, L);
         // TODO: Need to build out an array of epsilon values at each each grid
         // point, and pass this array into GetFieldOnGridImproved so it can be
         // indexed into when computing real space reconstructions of E from
@@ -3383,7 +3389,7 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
         size_t ns = nxy[0]*nxy[1];
         epsilon = (S4_complex*)S4_malloc(sizeof(S4_complex)*ns);
         S4_Material *M;
-        int shape_index;
+//        int shape_index;
         double du = hypot(S->Lr[0], S->Lr[1])/nxy[0];
         double dv = hypot(S->Lr[2], S->Lr[3])/nxy[1];
         /* printf("nxy = {%d, %d}\n",nxy[0], nxy[1]); */
@@ -3399,15 +3405,25 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
                 double r[2] = {
                     ruv[0] * S->Lr[0] + ruv[1] * S->Lr[2],
                     ruv[0] * S->Lr[1] + ruv[1] * S->Lr[3] };
-                int result  = Pattern_GetShape(&(L->pat), r, &shape_index, NULL);
-                if (result == 0) {
-                    M = Simulation_GetMaterialByIndex(S, L->pattern.shapes[shape_index].tag);
-                } else {
-                    M = Simulation_GetMaterialByName(S, L->name, NULL);
+//                int result  = Pattern_GetShape(&(L->pat), r, &shape_index, NULL);
+//                if (result == 0) {
+//                    M = Simulation_GetMaterialByIndex(S, L->pattern.shapes[shape_index].tag);
+//                } else {
+//                    M = Simulation_GetMaterialByName(S, L->name, NULL);
+//                }
+                if(NULL == L->pat){
+//                    const S4_Material *M;
+                    if(L->copy < 0){
+                        M = &S->material[L->material];
+                    }else{
+                        M = &S->material[S->layer[L->copy].material];
+                    }
                 }
                 // If M.type = 0 then epsilon is a scalar, if M.type = 1 epsilon is a
                 // tensor. IDK what to do with a tensor epsilon
+                // TODO: Implementation of complex Weismann
                 if(0 != M->type){
+                    fprintf(stderr, "Cannot use Weismann Formulation with tensor epsilon in material %s.\n", M->name);
                     return -1;
                 }
                 S4_complex eps_val(M->eps.s[0], M->eps.s[1]);
