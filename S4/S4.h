@@ -121,6 +121,10 @@ typedef int (*S4_message_handler)(
 extern "C" {
 #endif
 
+void* S4_malloc(size_t size);
+void S4_free(void *ptr);
+
+
 /********************************************************************/
 /* Simulation object constructor, destructor, and copy constructor. */
 /********************************************************************/
@@ -151,6 +155,7 @@ int S4_Simulation_SetFrequency(S4_Simulation *S, const S4_real *freq_complex);
 int S4_Simulation_GetFrequency(const S4_Simulation *S, S4_real *freq_complex);
 int S4_Simulation_LayerCount(const S4_Simulation *S);
 int S4_Simulation_TotalThickness(const S4_Simulation *S, S4_real *thickness);
+int S4_Simulation_GetLayer(const S4_Simulation *S, const S4_real *z, S4_real *dz);
 
 /******************************/
 /* Material related functions */
@@ -159,6 +164,7 @@ int S4_Simulation_TotalThickness(const S4_Simulation *S, S4_real *thickness);
 #define S4_MATERIAL_TYPE_SCALAR_COMPLEX   3
 #define S4_MATERIAL_TYPE_XYTENSOR_REAL    4
 #define S4_MATERIAL_TYPE_XYTENSOR_COMPLEX 5
+int S4_Simulation_MaterialCount(const S4_Simulation *S);
 S4_MaterialID S4_Simulation_SetMaterial(
 	S4_Simulation *S, S4_MaterialID M, const char *name, int type, const S4_real *eps
 );
@@ -175,6 +181,7 @@ int S4_Material_GetEpsilon(
 /***************************/
 /* Layer related functions */
 /***************************/
+
 S4_LayerID S4_Simulation_SetLayer(
 	S4_Simulation *S, S4_LayerID L, const char *name, const S4_real *thickness,
 	S4_LayerID copy, S4_MaterialID material
@@ -227,8 +234,8 @@ int S4_Simulation_ExcitationPlanewave(
 	S4_Simulation *S, const S4_real *kdir, const S4_real *udir,
 	const S4_real *amp_u, const S4_real *amp_v
 );
-int S4_Simulation_ExcitationExterior(S4_Simulation *S, int n, const int *exg, const double *ex);
-int S4_Simulation_ExcitationDipole(S4_Simulation *S, const double k[2], const char *layer, const double pos[2], const double moment[6]);
+int S4_Simulation_ExcitationExterior(S4_Simulation *S, int n, const int *exg, const S4_real *ex);
+int S4_Simulation_ExcitationDipole(S4_Simulation *S, const S4_real k[2], const char *layer, const S4_real pos[2], const S4_real moment[6]);
 
 // Internal functions
 #ifdef __cplusplus
@@ -257,11 +264,21 @@ int S4_Simulation_SolveLayer(S4_Simulation *S, S4_LayerID L);
 int S4_Simulation_GetPowerFlux(
 	S4_Simulation *S, S4_LayerID layer, const S4_real *offset,
 	S4_real *power
-);
+);/*
+power[0] is forward real,
+power[1] is backward real,
+power[2] is forward imag,
+power[3] is backward imag
+*/
 int S4_Simulation_GetPowerFluxes(
 	S4_Simulation *S, S4_LayerID layer, const S4_real *offset,
 	S4_real *power
-);
+);/*
+power[  0:  n] is forward real,
+power[  n:2*n] is backward real,
+power[2*n:3*n] is forward imag,
+power[3*n:4*n] is backward imag
+*/
 // waves should be size 2*11*S->n_G
 // Each wave is length 11:
 //   { kx, ky, kzr, kzi, ux, uy, uz, cur, cui, cvr, cvi }
@@ -274,9 +291,25 @@ int S4_Simulation_GetFieldPlane(
 	S4_real *E, S4_real *H
 );
 
+#define S4_EPSILON_FORMAT_SCALAR 0x00
+#define S4_EPSILON_FORMAT_TENSOR 0x80
+#define S4_EPSILON_FORMAT_ZZ 0x00
+#define S4_EPSILON_FORMAT_XX 0x01
+#define S4_EPSILON_FORMAT_XY 0x02
+#define S4_EPSILON_FORMAT_YX 0x04
+#define S4_EPSILON_FORMAT_YY 0x08
 int S4_Simulation_GetEpsilon(
-	S4_Simulation *S, int nxy[2], const S4_real *xyz0, S4_real *eps
-); // eps is {real,imag}
+	S4_Simulation *S, int format, int nxy[2], const S4_real *xyz0, S4_real *eps
+); /*
+For scalar epsilon:
+	eps[2*(i+j*nxy[0])+0] is real
+	eps[2*(i+j*nxy[0])+1] is imag
+where i is in [0, nxy[0]) and j is in [0, nxy[1])
+The location of element (i,j) is at xyz0+Lr*[u;v] for
+	u = i / nxy[0]
+	v = j / nxy[1]
+Tensor epsilon is currently not supported 
+*/
 
 // Returns a solution error code
 // Tint is a vector of time averaged stress tensor integral

@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <complex>
+#include <IO.h>
 
 //#define RNP_FORTRAN_NAME(LCASE,UCASE) LCASE ## _
 #ifndef RNP_FORTRAN_NAME
@@ -15,18 +16,19 @@ extern "C" void RNP_FORTRAN_NAME(zgeev,ZGEEV)(const char *jobvl, const char *job
 	std::complex<double> *a, const integer &lda, std::complex<double> *w, std::complex<double> *vl, 
 	const integer &ldvl, std::complex<double> *vr, const integer &ldvr, std::complex<double> *work, 
 	const integer &lwork, double *rwork, integer *info);
+extern "C" void RNP_FORTRAN_NAME(dgeev,DGEEV)(const char *jobvl, const char *jobvr, const integer &n, 
+	double *a, const integer &lda, double *wr, double *wi, double *vl, 
+	const integer &ldvl, double *vr, const integer &ldvr, double *work, 
+	const integer &lwork, integer *info);
 
 extern "C" void RNP_FORTRAN_NAME(zgees,ZGEES)(const char *jobvs, const char *sort, integer (*select)(), const integer &n,
 	std::complex<double> *a, const integer &lda, const integer &sdim, std::complex<double> *w,
 	std::complex<double> *vs, const integer &ldvs, std::complex<double> *work, const integer &lwork,
 	double *rwork, integer *bwork, integer *info);
 
-extern "C" void RNP_FORTRAN_NAME(dgeev,DGEEV)(const char *jobvl, const char *jobvr, const integer &n, 
-	double *a, const integer &lda, double *wr, double *wi, double *vl, 
-	const integer &ldvl, double *vr, const integer &ldvr, double *work, 
-	const integer &lwork, integer *info);
-
-#include <iostream>
+extern "C" void RNP_FORTRAN_NAME(zheev,ZHEEV)(const char *jobz, const char *uplo, const integer &n, 
+	std::complex<double> *a, const integer &lda, double *w,
+	std::complex<double> *work, const integer &lwork, double *rwork, integer *info);
 
 namespace RNP{
 
@@ -128,8 +130,7 @@ inline int Eigensystem(size_t n,
 	return info;
 }
 
-
-inline int Eigensystem_real(size_t n,
+inline int Eigensystem(size_t n,
 	double *a, size_t lda,
 	std::complex<double> *eval,
 	std::complex<double> *vl, size_t ldvl, std::complex<double> *vr, size_t ldvr,
@@ -143,80 +144,125 @@ inline int Eigensystem_real(size_t n,
 	if(vl != NULL){ jobvl[0] = 'V'; }
 	if(vr != NULL){ jobvr[0] = 'V'; }
 	integer info;
-	
-	double *peval = (double*)eval;
+	double *wr = (double*)eval;
+	double *wi = ((double*)eval)+n;
 
 	if((size_t)-1 == lwork_){
-		RNP_FORTRAN_NAME(dgeev,DGEEV)(jobvl, jobvr, n, a, lda, peval, peval+n, (double*)vl, 2*ldvl, (double*)vr, 2*ldvr, work_, -1, &info);
+		RNP_FORTRAN_NAME(dgeev,DGEEV)(jobvl, jobvr, n, a, lda, wr, wi, (double*)vl, ldvl, (double*)vr, ldvr, work_, -1, &info);
 		return 0;
 	}
 	
 	double *work = work_;
-	if(0 == lwork_){ lwork_ = 4*n; }
+	if(0 == lwork_){ lwork_ = 3*n; }
 	integer lwork = lwork_;
-	if(NULL == work_ || lwork < (integer)(4*n)){
+	if(NULL == work_ || lwork < (integer)(3*n)){
 		lwork = -1;
 		double zlen;
-		RNP_FORTRAN_NAME(dgeev,DGEEV)(jobvl, jobvr, n, a, lda, peval, peval+n, (double*)vl, 2*ldvl, (double*)vr, 2*ldvr, &zlen, lwork, &info);
-		lwork = (integer)zlen;
+		RNP_FORTRAN_NAME(dgeev,DGEEV)(jobvl, jobvr, n, a, lda, wr, wi, (double*)vl, ldvl, (double*)vr, ldvr, &zlen, lwork, &info);
+		lwork = (integer)(zlen);
 		work = new double[lwork];
 	}
-	RNP_FORTRAN_NAME(dgeev,DGEEV)(jobvl, jobvr, n, a, lda, peval, peval+n, (double*)vl, 2*ldvl, (double*)vr, 2*ldvr, work, lwork, &info);
-	
-	double *wi = work+2*n;
-	memcpy(wi, peval+n, sizeof(double)*n);
-	for(size_t j = 0; j < n; ++j){
-		memcpy(&a[j*lda], &vr[j*ldvr], sizeof(double)*n);
+	RNP_FORTRAN_NAME(dgeev,DGEEV)(jobvl, jobvr, n, a, lda, wr, wi, (double*)vl, ldvl, (double*)vr, ldvr, work, lwork, &info);
+	// Fixup solutions
+	for(size_t i = 0; i < n; ++i){
+		work[i] = wr[i];
 	}
-	size_t j = n;
-	while(j --> 0){
-		eval[j] = std::complex<double>(peval[j], wi[j]);
-		if(0 == wi[j]){
-			if(NULL != vl){
-				size_t i = n;
-				while(i --> 0){
-					vl[i+j*ldvl] = *(((double*)vl)+i+j*2*ldvl);
-				}
-			}
-			if(NULL != vr){
-				size_t i = n;
-				while(i --> 0){
-					vr[i+j*ldvr] = *(((double*)vr)+i+j*2*ldvr);
-				}
-			}
-		}else{
-			if(j == 0){
-				break;
-			}
-			eval[j-1] = std::complex<double>(peval[j-1], wi[j-1]);
-			if(NULL != vl){
-				// TODO
-			}
-			if(NULL != vr){
+	for(size_t i = 0; i < n; ++i){
+		eval[i] = std::complex<double>(work[i], wi[i]);
+	}
+	if(NULL != vl){
+		RNP::TBLAS::CopyMatrix<'A'>(n,n, (double*)vl, ldvl, a, lda);
+		for(size_t j = 0; j < n; ++j){
+			if(0 == eval[j].imag()){
 				for(size_t i = 0; i < n; ++i){
-					vr[i+(j-1)*ldvr] = std::complex<double>(a[i+(j-1)*lda],  a[i+j*lda]);
-					vr[i+ j   *ldvr] = std::complex<double>(a[i+(j-1)*lda], -a[i+j*lda]);
+					vl[i+j*ldvl] = a[i+j*lda];
 				}
+			}else{
+				for(size_t i = 0; i < n; ++i){
+					vl[i+(j+0)*ldvl] = std::complex<double>(a[i+(j+0)*lda], a[i+(j+1)*lda]);
+				}
+				for(size_t i = 0; i < n; ++i){
+					vl[i+(j+1)*ldvl] = std::complex<double>(a[i+(j+0)*lda], -a[i+(j+1)*lda]);
+				}
+				++j;
 			}
-			j--;
 		}
 	}
-	
-	if(NULL == work_ || lwork < (integer)(4*n)){
+	if(NULL != vr){
+		RNP::TBLAS::CopyMatrix<'A'>(n,n, (double*)vr, ldvr, a, lda);
+		for(size_t j = 0; j < n; ++j){
+			if(0 == eval[j].imag()){
+				for(size_t i = 0; i < n; ++i){
+					vr[i+j*ldvr] = a[i+j*lda];
+				}
+			}else{
+				for(size_t i = 0; i < n; ++i){
+					vr[i+(j+0)*ldvr] = std::complex<double>(a[i+(j+0)*lda], a[i+(j+1)*lda]);
+				}
+				for(size_t i = 0; i < n; ++i){
+					vr[i+(j+1)*ldvr] = std::complex<double>(a[i+(j+0)*lda], -a[i+(j+1)*lda]);
+				}
+				++j;
+			}
+		}
+	}
+	if(NULL == work_ || lwork < (integer)(3*n)){
 		delete [] work;
 	}
 	
 	return info;
 }
 
-/*
+
 // zheev
-template <char uplo>
-int HermitianEigensystem(size_t n, 
+inline int HermitianEigensystem(size_t n, 
 	std::complex<double> *a, size_t lda,
 	std::complex<double> *eval,
-	std::complex<double> *work, double *rwork);
+	std::complex<double> *work_,
+	double *rwork_, size_t lwork_
+){
+	if(n == 0) {
+		return 0;
+	}
+	char jobz[2] = "V";
+	char uplo[2] = "U";
+	integer info;
 
+	if((size_t)-1 == lwork_){
+		RNP_FORTRAN_NAME(zheev,ZHEEV)(jobz, uplo, n, a, lda, (double*)eval, work_, -1, rwork_, &info);
+		return 0;
+	}
+	
+	std::complex<double> *work = work_;
+	double *rwork = rwork_;
+	if(NULL == rwork_){
+		rwork = new double[3*n-2];
+	}
+	if(0 == lwork_){ lwork_ = 2*n; }
+	integer lwork = lwork_;
+	if(NULL == work_ || lwork < (integer)(2*n)){
+		lwork = -1;
+		std::complex<double> zlen;
+		RNP_FORTRAN_NAME(zheev,ZHEEV)(jobz, uplo, n, a, lda, (double*)eval, &zlen, lwork, rwork, &info);
+		lwork = (integer)(zlen.real());
+		work = new std::complex<double>[lwork];
+	}
+	RNP_FORTRAN_NAME(zheev,ZHEEV)(jobz, uplo, n, a, lda, (double*)eval, work, lwork, rwork, &info);
+	
+	for(size_t i = 0; i < n; ++i){
+		eval[n-1-i] = ((double*)eval)[n-1-i];
+	}
+	if(NULL == work_ || lwork < (integer)(2*n)){
+		delete [] work;
+	}
+	if(NULL == rwork_){
+		delete [] rwork;
+	}
+	
+	return info;
+}
+
+/*
 // dsyev
 template <char uplo>
 int SymmetricEigensystem(size_t n, 
@@ -224,6 +270,6 @@ int SymmetricEigensystem(size_t n,
 	double *eval,
 	double *work);
 */
-} // namespace RNP
+}; // namespace RNP
 
 #endif // _RNP_EIGENSYSTEMS_LAPACK_H_

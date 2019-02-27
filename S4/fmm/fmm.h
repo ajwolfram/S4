@@ -23,17 +23,14 @@
 #include <S4.h>
 #include <complex>
 
-typedef int (*FMMGetEpsilon)(const S4_Simulation *S, const S4_Layer *L, int n, std::complex<double> *Epsilon2, std::complex<double> *Epsilon_inv);
+#define GENEPSILON_REAL 0x1
+#define GENEPSILON_BLK2 0x2
 
-int FMMGetEpsilon_Kottke(const S4_Simulation *S, const S4_Layer *L, const int n, std::complex<double> *Epsilon2, std::complex<double> *Epsilon_inv);
-int FMMGetEpsilon_ClosedForm(const S4_Simulation *S, const S4_Layer *L, const int n, std::complex<double> *Epsilon2, std::complex<double> *Epsilon_inv);
-int FMMGetEpsilon_FFT(const S4_Simulation *S, const S4_Layer *L, const int n, std::complex<double> *Epsilon2, std::complex<double> *Epsilon_inv);
-int FMMGetEpsilon_Experimental(const S4_Simulation *S, const S4_Layer *L, const int n, std::complex<double> *Epsilon2, std::complex<double> *Epsilon_inv);
-
-// The following need to be called after FFT or ClosedForm
-int FMMGetEpsilon_PolBasisNV(const S4_Simulation *S, const S4_Layer *L, const int n, std::complex<double> *Epsilon2, std::complex<double> *Epsilon_inv);
-int FMMGetEpsilon_PolBasisVL(const S4_Simulation *S, const S4_Layer *L, const int n, std::complex<double> *Epsilon2, std::complex<double> *Epsilon_inv);
-int FMMGetEpsilon_PolBasisJones(const S4_Simulation *S, const S4_Layer *L, const int n, std::complex<double> *Epsilon2, std::complex<double> *Epsilon_inv);
+int GenEpsilon(
+	const S4_Simulation *S, const S4_Layer *L,
+	const int n, S4_complex *Epsilon2, S4_complex *Epsilon_inv,
+	S4_real *shift
+);
 
 double GetLanczosSmoothingOrder(const S4_Simulation *S);
 double GetLanczosSmoothingFactor(double order, int power, double f[2]);

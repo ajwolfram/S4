@@ -257,7 +257,8 @@ static void MakeKPMatrix(
 	}
 
 	const std::complex<double> omega2 = omega*omega;
-	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+	int et = epstype & EPSILON2_TYPE_MASK;
+	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
 		RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., kp,ldkp);
 
 		for(size_t i = 0; i < n; ++i){
@@ -337,6 +338,62 @@ static void MakeKPMatrix_real(
 	}
 }
 
+static void MakeKPMatrix(
+	double omega,
+	size_t n,
+	const double *kx,
+	const double *ky,
+	const std::complex<double> *Epsilon_inv,
+	int epstype,
+	const std::complex<double> *kp_existing,
+	double *kp,
+	const size_t ldkp // leading dimension of kp, >= 2*n
+){
+	const size_t n2 = 2*n;
+	if(NULL != kp_existing){
+		for(size_t j = 0; j < n2; ++j){
+			for(size_t i = 0; i < n2; ++i){
+				kp[i+j*ldkp] = kp_existing[i+j*n2].real();
+			}
+		}
+		return;
+	}
+
+	const double omega2 = omega*omega;
+	int et = epstype & EPSILON2_TYPE_MASK;
+	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
+		RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., kp,ldkp);
+
+		for(size_t i = 0; i < n; ++i){
+			kp[(0+i)+(0+i)*ldkp] = omega2 - ky[i]*Epsilon_inv[0].real()*ky[i];
+			kp[(n+i)+(0+i)*ldkp] = kx[i]*Epsilon_inv[0].real()*ky[i];
+		}
+		for(size_t i = 0; i < n; ++i){
+			kp[(0+i)+(n+i)*ldkp] = ky[i]*Epsilon_inv[0].real()*kx[i];
+			kp[(n+i)+(n+i)*ldkp] = omega2 - kx[i]*Epsilon_inv[0].real()*kx[i];
+		}
+	}else{
+		for(size_t j = 0; j < n; ++j){
+			for(size_t i = 0; i < n; ++i){
+				kp[i+j*ldkp] = (i == j ? omega2 : 0);
+				kp[i+j*ldkp] -= ky[i]*Epsilon_inv[i+j*n].real()*ky[j];
+			}
+			for(size_t i = 0; i < n; ++i){
+				kp[n+i+j*ldkp] = kx[i]*Epsilon_inv[i+j*n].real()*ky[j];
+			}
+		}
+		for(size_t j = 0; j < n; ++j){
+			for(size_t i = 0; i < n; ++i){
+				kp[i+(n+j)*ldkp] = ky[i]*Epsilon_inv[i+j*n].real()*kx[j];
+			}
+			for(size_t i = 0; i < n; ++i){
+				kp[n+i+(n+j)*ldkp] = (i == j ? omega2 : 0);
+				kp[n+i+(n+j)*ldkp] -= kx[i]*Epsilon_inv[i+j*n].real()*kx[j];
+			}
+		}
+	}
+}
+
 // kp = k-parallel matrix
 // kp = omega^2 - Kappa = omega^2 - [  ky*epsinv*ky -ky*epsinv*kx ]
 //                                  [ -kx*epsinv*ky  kx*epsinv*kx ]
@@ -378,7 +435,8 @@ void MultKPMatrix(
 	}
 
 	const std::complex<double> omega2 = omega*omega;
-	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == Epsilon2_type || EPSILON2_TYPE_BLKDIAG2_SCALAR == Epsilon2_type){
+	int et = Epsilon2_type & EPSILON2_TYPE_MASK;
+	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
 		const std::complex<double> epsinv(
 			'N' == trans[0] ? Epsilon_inv[0] : std::conj(Epsilon_inv[0])
 		);
@@ -726,8 +784,7 @@ void SolveLayerEigensystem(
 #endif
 
 	if((size_t)-1 == lwork){
-		double dum;
-		RNP::Eigensystem(n2, NULL, n2, q, NULL, 1, phi, n2, work_, &dum, lwork);
+		RNP::Eigensystem(n2, NULL, n2, q, NULL, 1, phi, n2, work_, NULL, lwork);
 		work_[0] += n2*n2;
 		return;
 	}else if(0 == lwork){
@@ -749,7 +806,7 @@ void SolveLayerEigensystem(
 
 	double *rwork = rwork_;
 	if(NULL == rwork_){
-		rwork = (double*)rcwa_malloc(sizeof(double)*2*n2);
+		rwork = (double*)rcwa_malloc(sizeof(double)*3*n2);
 	}
 
 #ifdef DUMP_MATRICES
@@ -824,7 +881,8 @@ void SolveLayerEigensystem(
 	RNP::TBLAS::CopyMatrix<'A'>(n2,n2, op,n2, op_save,n2);
 # endif
 #endif
-	int info = RNP::Eigensystem(n2, op, n2, q, NULL, 1, phi, n2, eigenwork, rwork, eigenlwork);
+	int info;
+	info = RNP::Eigensystem(n2, op, n2, q, NULL, 1, phi, n2, eigenwork, rwork, eigenlwork);
 	if(0 != info){
 		fprintf(stderr, "Layer eigensystem returned info = %d\n", info);
 	}
@@ -876,6 +934,169 @@ void SolveLayerEigensystem(
 	}
 	if(NULL == rwork_){
 		rcwa_free(rwork);
+	}
+}
+
+void SolveLayerEigensystem(
+	double omega,
+	size_t n,
+	const double *kx,
+	const double *ky,
+	const std::complex<double> *Epsilon_inv, // size (glist.n)^2; inv of usual dielectric Fourier coupling matrix
+	const std::complex<double> *Epsilon2, // size (2*glist.n)^2 (dielectric/normal-field matrix)
+	int epstype,
+	std::complex<double> *q, // length 2*glist.n
+	std::complex<double> *kp, // size (2*glist.n)^2 (k-parallel matrix)
+	std::complex<double> *phi, // size (2*glist.n)^2
+	double *work_,
+	size_t lwork
+){
+	const size_t n2 = 2*n;
+	if((size_t)-1 == lwork){
+		RNP::Eigensystem(n2, NULL, n2, q, NULL, 1, phi, n2, work_, lwork);
+		work_[0] += n2*n2;
+		return;
+	}else if(0 == lwork){
+		lwork = n2*n2+3*n2;
+	}
+
+	double *work = work_;
+	size_t eigenlwork;
+	if(NULL == work_ || lwork < n2*n2+3*n2){
+		lwork = (size_t)-1;
+		RNP::Eigensystem(n2, (double*)NULL, n2, q, NULL, 1, phi, n2, (double*)q, lwork);
+		eigenlwork = (size_t)q[0].real();
+		work = (double*)rcwa_malloc(sizeof(double)*(eigenlwork + n2*n2));
+	}else{
+		eigenlwork = lwork - n2*n2;
+	}
+	double *op = work;
+	double *eigenwork = op + n2*n2;
+
+#ifdef DUMP_MATRICES
+	DUMP_STREAM << "kx:" << std::endl;
+	RNP::IO::PrintVector(n,kx,1, DUMP_STREAM) << std::endl;
+	DUMP_STREAM << "ky:" << std::endl;
+	RNP::IO::PrintVector(n,ky,1, DUMP_STREAM) << std::endl << std::endl;
+#endif
+
+#ifdef DUMP_MATRICES
+	DUMP_STREAM << "Epsilon_inv:" << std::endl;
+# ifdef DUMP_MATRICES_LARGE
+	RNP::IO::PrintMatrix(n,n,Epsilon_inv,n, DUMP_STREAM) << std::endl << std::endl;
+# else
+	RNP::IO::PrintVector(n,Epsilon_inv,1, DUMP_STREAM) << std::endl << std::endl;
+# endif
+#endif
+
+	// Fill kp
+	std::complex<double> *kp_use = (NULL != kp ? kp : phi);
+
+	MakeKPMatrix(omega, n, kx, ky, Epsilon_inv, epstype, NULL, (double*)phi, n2);
+	if(NULL != kp){
+		for(size_t j = 0; j < n2; ++j){
+			for(size_t i = 0; i < n2; ++i){
+				kp[i+j*n2] = ((double*)phi)[i+j*n2];
+			}
+		}
+	}
+	for(size_t j = 0; j < n2; ++j){
+		for(size_t i = 0; i < n2; ++i){
+			((double*)phi)[i+(n2+j)*n2] = Epsilon2[i+j*n2].real();
+		}
+	}
+
+#ifdef DUMP_MATRICES
+	DUMP_STREAM << "kp:" << std::endl;
+# ifdef DUMP_MATRICES_LARGE
+	RNP::IO::PrintMatrix(n2,n2,kp_use,n2, DUMP_STREAM) << std::endl << std::endl;
+# else
+	RNP::IO::PrintVector(n2,&kp_use[0+(n2-1)*n2],1, DUMP_STREAM) << std::endl << std::endl;
+# endif
+#endif
+
+
+#ifdef DUMP_MATRICES
+	DUMP_STREAM << "Epsilon2:" << std::endl;
+# ifdef DUMP_MATRICES_LARGE
+	RNP::IO::PrintMatrix(n2,n2,Epsilon2,n2, DUMP_STREAM) << std::endl << std::endl;
+# else
+	RNP::IO::PrintVector(n2,Epsilon2,1, DUMP_STREAM) << std::endl << std::endl;
+# endif
+#endif
+
+	// Make the eigenoperator Epsilon2*kp - [kxkx, kxky; kykx, kyky]
+	RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., op,n2);
+	RNP::TBLAS::MultMM<'N','N'>(n2,n2,n2, 1.,(double*)&phi[0+n*n2],n2, (double*)phi,n2, 0.,op,n2);
+
+	for(size_t i = 0; i < n; ++i){
+		op[i+i*n2] -= kx[i]*kx[i];
+	}
+	for(size_t i = 0; i < n; ++i){
+		op[i+n+i*n2] -= ky[i]*kx[i];
+	}
+	for(size_t i = 0; i < n; ++i){
+		op[i+(i+n)*n2] -= kx[i]*ky[i];
+	}
+	for(size_t i = 0; i < n; ++i){
+		op[i+n+(i+n)*n2] -= ky[i]*ky[i];
+	}
+#ifdef DUMP_MATRICES
+	DUMP_STREAM << "op:" << std::endl;
+# ifdef DUMP_MATRICES_LARGE
+	RNP::IO::PrintMatrix(n2,n2,op,n2, DUMP_STREAM) << std::endl << std::endl;
+# else
+	RNP::IO::PrintMatrix(n2,n2,op,n2, DUMP_STREAM) << std::endl << std::endl;
+	//RNP::IO::PrintVector(n2,&op[0+(n2-1)*n2],1, DUMP_STREAM) << std::endl << std::endl;
+# endif
+#endif
+
+#ifdef DUMP_MATRICES
+# ifdef DUMP_MATRICES_LARGE
+	std::complex<double> *op_save = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 2*n2*n2);
+	std::complex<double> *op_temp = op_save + n2*n2;
+	RNP::TBLAS::CopyMatrix<'A'>(n2,n2, op,n2, op_save,n2);
+# endif
+#endif
+	int info;
+	info = RNP::Eigensystem(n2, op, n2, q, NULL, 1, phi, n2, eigenwork, eigenlwork);
+	if(0 != info){
+		fprintf(stderr, "Layer eigensystem returned info = %d\n", info);
+	}
+#ifdef DUMP_MATRICES
+	DUMP_STREAM << "eigen info = " << info << std::endl;
+# ifdef DUMP_MATRICES_LARGE
+	RNP::TBLAS::Fill(n2*n2, 0., op_temp,1);
+	RNP::TBLAS::MultMM<'N','N'>(n2,n2,n2, 1.,op_save,n2, phi,n2, 0.,op_temp,n2);
+	for(size_t i = 0; i < n2; ++i){
+		RNP::TBLAS::Axpy(n2, -q[i], &phi[0+i*n2],1, &op_temp[0+i*n2],1);
+	}
+	DUMP_STREAM << "eigensystem residual:" << std::endl;
+	RNP::IO::PrintMatrix(n2,n2,op_temp,n2, DUMP_STREAM) << std::endl << std::endl;
+	rcwa_free(op_save);
+# endif
+#endif
+
+	for(size_t i = 0; i < n2; ++i){
+		// Set the \hat{q} vector (diagonal matrix) while we're at it
+		q[i] = std::sqrt(q[i]);
+		if(q[i].imag() < 0){
+			q[i] = -q[i];
+		}
+	}
+#ifdef DUMP_MATRICES
+	DUMP_STREAM << "q:" << std::endl;
+	RNP::IO::PrintVector(n2,q,1, DUMP_STREAM) << std::endl << std::endl;
+	DUMP_STREAM << "phi:" << std::endl;
+# ifdef DUMP_MATRICES_LARGE
+	RNP::IO::PrintMatrix(n2,n2,phi,n2, DUMP_STREAM) << std::endl << std::endl;
+# else
+	RNP::IO::PrintVector(n2,phi,1, DUMP_STREAM) << std::endl << std::endl;
+# endif
+#endif
+
+	if(NULL == work_ || lwork < n2*n2+3*n2){
+		rcwa_free(work);
 	}
 }
 
@@ -1170,504 +1391,6 @@ void GetSMatrix(
 	if(NULL == iwork){
 		rcwa_free(pivots);
 	}
-}
-
-
-int SolveAll(
-	size_t nlayers,
-	size_t n, // glist.n
-	const double *kx, const double *ky,
-	std::complex<double> omega,
-	const double *thickness, // list of thicknesses
-	const std::complex<double> **q, // list of q vectors
-	const std::complex<double> **Epsilon_inv, // size (glist.n)^2; inv of usual dielectric Fourier coupling matrix
-	int *epstype,
-	const std::complex<double> **kp,
-	const std::complex<double> **phi,
-	std::complex<double> *ab, // length 2*n*nlayers
-	std::complex<double> *work_, // length lwork
-	size_t *iwork, // length n2*nlayers
-	size_t lwork // set to -1 for query into iwork[0], at least 6*n2^2*nlayers
-){
-	const size_t n2 = 2*n;
-	const size_t n4 = 2*n2;
-	const size_t n22 = n2*n2;
-	const size_t minwork = 6*n22*nlayers;
-	if((size_t)-1 == lwork){
-		iwork[0] = minwork;
-		return 0;
-	}
-	typedef std::complex<double> doublecomplex;
-	doublecomplex *work = work_;
-	if(0 == lwork && NULL == work_){
-		work = (doublecomplex*)rcwa_malloc(sizeof(doublecomplex) * minwork);
-		if(NULL == work){
-printf("Could not allocate %d\n", (int)minwork); fflush(stdout);
-			return 1;
-		}
-	}else if(lwork < minwork){
-		// error: not enough workspace
-		return -15;
-	}
-
-	// Set up temporaries
-	doublecomplex *t1 = work;
-	doublecomplex *t2 = t1 + n22;
-	doublecomplex *in1 = t2 + n22;
-	doublecomplex *in2 = in1 + n22;
-
-	for(size_t ip = 0, iq = 1; iq < nlayers; ip=iq++){
-		// Set pointers to current row of matrices
-		doublecomplex *row = work+6*n22*iq;
-
-		// Precondition for current loop iteration:
-		//   Qprev from previous iteration was formed correctly
-
-		/*
-		// Assemble interface T-matrix
-		//   Assemble mode-to-field operator for p in row
-		if(0 == p){
-			// TODO: Generate mode-to-field operator for p
-
-			// Factor and invert P
-			if(layer p is uniform){
-			}else if(layer p is z-uncoupled){
-			}else{
-				LUFactor(n4, n4, row, n4, ipiv);
-				LUInvert(n4, n4, row, n4, ipiv);
-			}
-		}else{ // Mode-to-field operator for p was generated and factored in previous iteration
-			// Only invert P (in-place)
-			if(layer p is uniform){
-			}else if(layer p is z-uncoupled){
-			}else{
-				LUInvert(n4, n4, row, n4, ipiv);
-			}
-		}
-		//   Assemble mode-to-field operator for q in rownext
-		// TODO: Generate mode-to-field operator for q
-		if(layer q is uniform){
-		}else if(layer q is z-uncoupled){
-		}else{
-			LUFactor(n4, n4, rownext, n4, ipiv);
-		}
-		// In-place multiply q into p
-		LUMultRight(n4, n4, rownext, n4, ipiv);
-		*/
-
-		// Make the interface matrices
-		if((ip == iq) || (q[ip] == q[iq] && ((NULL != kp[ip] && kp[ip] == kp[iq]) || Epsilon_inv[ip] == Epsilon_inv[iq]) && phi[ip] == phi[iq])){
-			// This is a trivial interface, set to identity
-			RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,1., in1, n2);
-			RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., in2, n2);
-		}else{
-			// The interface matrix is the inverse of the mode-to-field matrix of layer l
-			// times the mode-to-field matrix of layer l+1 (lp1).
-			// The mode-to-field matrix is of the form
-			// [ B -B ] where A = phi
-			// [ A  A ] where B = kp*phi*inv(diag(q)) = G*A/q
-			// So we want
-			// 0.5 * [  iBl  iAl ] [ Blp1 -Blp1 ]
-			//       [ -iBl  iAl ] [ Alp1  Alp1 ]
-			// Multiplying out gives
-			// 0.5 * [ P+Q P-Q ] // where P = iAl*Alp1, and i in front means inverse
-			//       [ P-Q P+Q ] // where Q = iBl*Blp1
-			// Making P is easy, since A is a single matrix.
-			// Making Q is as follows:
-			// Q = iBl*Blp1
-			//   = ql*iAl*iGl * Gl*Alp1*iqlp1
-			// We will only store I11 and I21
-			/*
-			{
-				std::complex<double> *Ml = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>)*n4*n4);
-				std::complex<double> *Mlp1 = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>)*n4*n4);
-
-				RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., &Ml[0+0*n4],n4);
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, phi[l],n2, &Ml[n2+0*n4],n4);
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, phi[l],n2, &Ml[n2+n2*n4],n4);
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, phi[l],n2, &Ml[0+n2*n4],n4);
-				for(size_t i = 0; i < n2; ++i){
-					RNP::TBLAS::Scale(n2, 1./q[l][i], &Ml[0+(i+n2)*n4], 1);
-				}
-				RNP::TBLAS::MultMM<'N','N'>(n2,n2,n2, 1.,kp[l],n2, &Ml[0+n2*n4],n4, 0.,&Ml[0+0*n4],n4);
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, &Ml[0+0*n4],n4, &Ml[0+n2*n4],n4);
-				for(size_t i = 0; i < n2; ++i){
-					RNP::TBLAS::Scale(n2, -1., &Ml[0+(i+n2)*n4], 1);
-				}
-
-				RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., &Mlp1[0+0*n4],n4);
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, phi[lp1],n2, &Mlp1[n2+0*n4],n4);
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, phi[lp1],n2, &Mlp1[n2+n2*n4],n4);
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, phi[lp1],n2, &Mlp1[0+n2*n4],n4);
-				for(size_t i = 0; i < n2; ++i){
-					RNP::TBLAS::Scale(n2, 1./q[lp1][i], &Mlp1[0+(i+n2)*n4], 1);
-				}
-				RNP::TBLAS::MultMM<'N','N'>(n2,n2,n2, 1.,kp[lp1],n2, &Mlp1[0+n2*n4],n4, 0.,&Mlp1[0+0*n4],n4);
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, &Mlp1[0+0*n4],n4, &Mlp1[0+n2*n4],n4);
-				for(size_t i = 0; i < n2; ++i){
-					RNP::TBLAS::Scale(n2, -1., &Mlp1[0+(i+n2)*n4], 1);
-				}
-
-				//RNP::LinearSolve<'N'>(n4, n4, Ml, n4, Mlp1, n4, NULL, pivots);
-#ifdef DUMP_MATRICES
-			DUMP_STREAM << "M(" << l << ") = " << std::endl;
-# ifdef DUMP_MATRICES_LARGE
-			RNP::IO::PrintMatrix(n4,n4,Ml,n4, DUMP_STREAM) << std::endl << std::endl;
-# else
-			RNP::IO::PrintVector(n4,Ml,1, DUMP_STREAM) << std::endl << std::endl;
-# endif
-			DUMP_STREAM << "M(" << lp1 << ") = " << std::endl;
-# ifdef DUMP_MATRICES_LARGE
-			RNP::IO::PrintMatrix(n4,n4,Mlp1,n4, DUMP_STREAM) << std::endl << std::endl;
-# else
-			RNP::IO::PrintVector(n4,Mlp1,1, DUMP_STREAM) << std::endl << std::endl;
-# endif
-#endif
-
-				rcwa_free(Mlp1);
-				rcwa_free(Ml);
-			}
-			*/
-
-			//// Begin copy from GetSMatrix
-			// Make Bl in t1
-			RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., t1,n2);
-			{
-				if(NULL == phi[ip]){
-					if(NULL == kp[ip]){
-						MakeKPMatrix(omega, n, kx, ky, Epsilon_inv[ip], epstype[ip], kp[ip], t1,n2);
-					}else{
-						RNP::TBLAS::CopyMatrix<'A'>(n2,n2, kp[ip],n2, t1,n2);
-					}
-				}else{
-					MultKPMatrix("N", omega, n, kx, ky, Epsilon_inv[ip], epstype[ip], kp[ip], n2, phi[ip],n2, t1,n2);
-				}
-			}
-#ifdef DUMP_MATRICES
-			DUMP_STREAM << "Bl(" << ip << ") = " << std::endl;
-# ifdef DUMP_MATRICES_LARGE
-			RNP::IO::PrintMatrix(n2,n2,t1,n2, DUMP_STREAM) << std::endl << std::endl;
-# else
-			RNP::IO::PrintVector(n2,t1,1, DUMP_STREAM) << std::endl << std::endl;
-# endif
-#endif
-			// Make Blp1 in in1
-			RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,0., in1,n2);
-			{
-				if(NULL == phi[iq]){
-					if(NULL == kp[iq]){
-						MakeKPMatrix(omega, n, kx, ky, Epsilon_inv[iq], epstype[iq], kp[iq], in1,n2);
-					}else{
-						RNP::TBLAS::CopyMatrix<'A'>(n2,n2, kp[iq],n2, in1,n2);
-					}
-				}else{
-					MultKPMatrix("N", omega, n, kx, ky, Epsilon_inv[iq], epstype[iq], kp[iq], n2, phi[iq],n2, in1,n2);
-				}
-			}
-#ifdef DUMP_MATRICES
-		DUMP_STREAM << "Bl(" << iq << ") = " << std::endl;
-# ifdef DUMP_MATRICES_LARGE
-		RNP::IO::PrintMatrix(n2,n2,in1,n2, DUMP_STREAM) << std::endl << std::endl;
-# else
-		RNP::IO::PrintVector(n2,in1,1, DUMP_STREAM) << std::endl << std::endl;
-# endif
-#endif
-			int solve_info;
-			// Make Q in in1
-			RNP::LinearSolve<'N'>(n2, n2, t1, n2, in1, n2, &solve_info, iwork);
-			//SingularLinearSolve(n2,n2,n2, t1,n2, in1,n2, DBL_EPSILON);
-			// Now perform the diagonal scalings
-			for(size_t i = 0; i < n2; ++i){
-				RNP::TBLAS::Scale(n2, q[ip][i], &in1[i+0*n2], n2);
-			}
-			{
-				double maxel = 0;
-				for(size_t i = 0; i < n2; ++i){
-					double el = std::abs(q[iq][i]);
-					if(el > maxel){ maxel = el; }
-				}
-				for(size_t i = 0; i < n2; ++i){
-					double el = std::abs(q[iq][i]);
-					if(el < DBL_EPSILON * maxel){
-						RNP::TBLAS::Scale(n2, 0., &in1[0+i*n2], 1);
-					}else{
-						RNP::TBLAS::Scale(n2, 1./q[iq][i], &in1[0+i*n2], 1);
-					}
-				}
-			}
-
-			// Make P in in2
-			if(NULL == phi[iq]){
-				RNP::TBLAS::SetMatrix<'A'>(n2,n2, 0.,1., in2,n2);
-			}else{
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, phi[iq],n2, in2,n2);
-			}
-			if(NULL != phi[ip]){
-				RNP::TBLAS::CopyMatrix<'A'>(n2,n2, phi[ip],n2, t1,n2);
-				RNP::LinearSolve<'N'>(n2, n2, t1, n2, in2, n2, &solve_info, iwork);
-			}
-
-			RNP::TBLAS::CopyMatrix<'A'>(n2,n2, in2,n2, t1,n2); // in2 = P, t1 = P, in1 = Q
-			RNP::TBLAS::Axpy(n2*n2, -1., in1,1, in2,1); // in2 = P-Q, t1 = P, in1 = Q
-			RNP::TBLAS::Axpy(n2*n2, 1., t1,1, in1,1); // in2 = P+Q, t1 = P, in1 = P+Q
-			RNP::TBLAS::Scale(n2*n2, 0.5, in1,1);
-			RNP::TBLAS::Scale(n2*n2, 0.5, in2,1);
-		}
-#ifdef DUMP_MATRICES
-		DUMP_STREAM << "Interface1(" << iq << ") = " << std::endl;
-# ifdef DUMP_MATRICES_LARGE
-		RNP::IO::PrintMatrix(n2,n2,in1,n2, DUMP_STREAM) << std::endl << std::endl;
-# else
-		RNP::IO::PrintVector(n2,in1,1, DUMP_STREAM) << std::endl << std::endl;
-# endif
-		DUMP_STREAM << "Interface2(" << iq << ") = " << std::endl;
-# ifdef DUMP_MATRICES_LARGE
-		RNP::IO::PrintMatrix(n2,n2,in2,n2, DUMP_STREAM) << std::endl << std::endl;
-# else
-		RNP::IO::PrintVector(n2,in2,1, DUMP_STREAM) << std::endl << std::endl;
-# endif
-#endif
-
-		//PrintMatrix("in1", n2, n2, in1, n2);
-		//PrintMatrix("in2", n2, n2, in2, n2);
-
-		doublecomplex *Sba = row;
-		doublecomplex *Saa = Sba+n2;
-		doublecomplex *Sbb = row+n2*n4;
-		doublecomplex *Sab = Sbb+n2;
-
-//printf("Preparing to exchange T to S\n"); fflush(stdout);
-
-		// Exchange to interface S-matrix, and also swap block rows
-		Copy(n2,n2, in1,n2, Saa,n4);
-		Invert(n2, Saa,n4, Sbb, n22, iwork); // Use Sbb as workspace
-		Mult(n2,  1., in2,n2, Saa,n4, 0., Sba,n4);
-		Mult(n2, -1., Saa,n4, in2,n2, 0., Sab,n4);
-		Copy(n2,n2, in1,n2, Sbb,n4);
-		Mult(n2,  1., in2,n2, Sab,n4, 1., Sbb,n4);
-
-//printf("Exchanged T to S\n"); fflush(stdout);
-
-//		PrintMatrix("Saa", n2, n2, Saa, n4);
-//		PrintMatrix("Sab", n2, n2, Sab, n4);
-//		PrintMatrix("Sba", n2, n2, Sba, n4);
-//		PrintMatrix("Sbb", n2, n2, Sbb, n4);
-
-		// Fold in propagation phases into the S-matrix
-		for(size_t j = 0; j < n2; ++j){
-			doublecomplex sp = std::exp(q[ip][j] * std::complex<double>(0,thickness[ip]));
-			doublecomplex sq = std::exp(q[iq][j] * std::complex<double>(0,thickness[iq]));
-//printf("Scale factor ip j = %f + %f i\n", sp.real(), sp.imag());
-//printf("Scale factor iq j = %f + %f i\n", sq.real(), sq.imag());
-			Scale(n4, sp, &row[0+j*n4]);
-			Scale(n4, sq, &row[0+(j+n2)*n4]);
-		}
-
-//		PrintMatrix("Saa with phase", n2, n2, Saa, n4);
-//		PrintMatrix("Sab with phase", n2, n2, Sab, n4);
-//		PrintMatrix("Sba with phase", n2, n2, Sba, n4);
-//		PrintMatrix("Sbb with phase", n2, n2, Sbb, n4);
-
-//printf("Applied phases\n"); fflush(stdout);
-	}
-	///////////// End copy from GetSMatrix
-
-	// At this point, the workspace is divided into portions of length 6*n22
-	// for each layer. The interface scattering matrix between layers i and i+1
-	// begins at offset 6*n22*(i+1) in the workspace. The contents of each block
-	// has the form:
-	//   [ Sba Sbb ]
-	//   [ Saa Sab ]
-	// The system of equations has instead a block row of the form:
-	//   [ -Sba  I   0  -Sbb ]
-	//   [ -Saa  0   I  -Sab ]
-	// Assembling all such rows, one obtains a rectangular matrix of size
-	// 4*n*(m-1) by 4*n*m where m is the number of layers.
-	// The labeling of the rows is [ b0, a1, b1, a2, b2, ... am ]
-	// The labeling of the columns is [ a0, b0, a1, b1, a2, b2, ... am, bm ]
-	// The first and last block columns correspond to boundary conditions and
-	// hence must be moved to the RHS. This produces in the end a square matrix.
-
-	// Prepare the RHS
-	Mult(n4, n2, 1., &work[6*n22], n4, &ab[0], 0, t1);
-	Copy(n4, t1, 1, &ab[n2], 1);
-	Mult(n4, n2, 1., &work[6*n22*(nlayers-1)+n2*n4], n4, &ab[(nlayers-1)*n4+n2], 0, t1);
-	Copy(n4, t1, 1, &ab[(nlayers-1)*n4-n2], 1);
-
-//	PrintMatrix("RHS0", n4,nlayers, ab, n4);
-
-	// At this point, we can compute the quantities involved in the LDU decomposition
-	// of the system matrix. The initial diagonal pivot block is
-	//   [ I    0  | -Sbb  0 ]
-	//   [ 0    I  | -Sab  0 ]
-	//   [ --------+-------- ]
-	//   [ 0  -Sba |         ]
-	//   [ 0  -Saa |         ]
-	// Notice that the upper and lower diagonal blocks come from different interfaces.
-	// The first LDU factorization step is trivial, and there are m-1 in total.
-	// Therefore, we need only iterate through the m-2 inner layers.
-
-	for(size_t i = 1; i < nlayers; i++){
-//printf("i = %d\n", (int)i);
-		// Set pointers to current row of matrices
-		doublecomplex *row = work+6*n22*i;
-		doublecomplex *P = row + 4*n22;
-		doublecomplex *Q = P + n22;
-		doublecomplex *Pprev = P - 6*n22;
-		doublecomplex *Qprev = Pprev + n22;
-
-		const doublecomplex *Sbb = row-6*n22+n2*n4;
-		const doublecomplex *Sab = Sbb+n2;
-
-		const doublecomplex *Sba = row;
-		const doublecomplex *Saa = Sba+n2;
-		size_t *ipivP = iwork + n2*i;
-
-		// Perform LDU factorization step
-		if(1 == i){ // First step is trivial
-			SetMatrix(n2, n2, 1., 0., P, n2);
-			ZeroMatrix(n2, n2, Q, n2);
-		}else{
-			Copy(n2, n2, Sab, n4, t1, n2); // t1 = Sab
-			Copy(n2, n2, Sbb, n4, Q, n2); // Q = Sbb, t1 = Sab
-			LUSolve(n2, n2, Pprev, n2, ipivP-n2, Q, n2); // Q = inv(P) Sbb, t1 = Sab
-//	PrintMatrix("t1(Sab)", n2,n2, Sab, n4);
-//	PrintMatrix("         Sbb", n2,n2, Sbb, n4);
-//	PrintMatrix("invPprev Sbb", n2,n2, Q, n2);
-//	PrintMatrix("Qprev", n2,n2, Qprev, n2);
-			Mult(n2, 1., Qprev, n2, Q, n2, -1., t1, n2); // t1 = Q*inv(P)*Sbb - Sab
-//	PrintMatrix("Qprev invPprev Sbb", n2,n2, t1, n2);
-			Mult(n2, 1., Saa, n4, t1, n2, 0., Q, n2);
-	//PrintMatrix("Saa", n2,n2, Saa, n4);
-	//PrintMatrix("Saa Qprev invPprev Sbb", n2,n2, Q, n2);
-
-			Mult(n2, 1., Sba, n4, t1, n2, 0., P, n2);
-			for(size_t j = 0; j < n2; ++j){
-				P[j+j*n2] += 1.;
-			}
-
-	//		PrintMatrix("Q", n2,n2, Q, n2);
-	//		PrintMatrix("P", n2,n2, P, n2);
-		}
-//	PrintMatrix("P", n2,n2, P, n2);
-		LUFactor(n2, P, n2, ipivP);
-//	PrintMatrix("Pfactored", n2,n2, P, n2);
-//	for(size_t i = 0; i < n2; ++i){
-//		printf(" %d", ((int*)ipivP)[i]);
-//	} printf("\n");
-
-//printf("LDU step completed\n"); fflush(stdout);
-	}
-
-	// Now use LDU factorization to solve
-	//   L D U x = b
-	//   x = U \ (D \ (L \ b))
-	//
-	// Forward pass for D \ (L \ b)
-	for(size_t j = 1; j+1 < nlayers; ++j){
-		// Set pointers to current row of matrices
-		doublecomplex *row = work+6*n22*j;
-		doublecomplex *P = row + 4*n22;
-		doublecomplex *Q = P + n22;
-		doublecomplex *Pprev = P - 6*n22;
-		doublecomplex *Qprev = Pprev + n22;
-
-		doublecomplex *Sbb = row+n2*n4;
-		doublecomplex *Sab = Sbb+n2;
-
-		doublecomplex *Sba = row+6*n22;
-		doublecomplex *Saa = Sba+n2;
-
-		doublecomplex *aj = &ab[j*n4];
-		doublecomplex *bjm1 = aj-n2;
-		doublecomplex *bjp1 = aj+n2;
-		size_t *ipivP = iwork + n2*j;
-
-		// sub-diagonal block:
-		//   [     P               |  ]
-		//   [     Q            I  |  ]
-		//   [ --------------------+- ]
-		//   [ Sba Q inv(P)   -Sba |  ]
-		//   [ Saa Q inv(P)   -Saa |  ]
-		Copy(n4, bjm1, 1, t1, 1);
-//PrintMatrix("bjm1", n4,1, bjm1, n4);
-//PrintMatrix("Applied matrix", n4,n2, Sba, n4);
-		Mult(n4, n2, 1., Sba, n4, &t1[n2], 1., bjp1);
-		if(j > 1){ // Second iteration should use the fact that Q = 0
-			LUSolve(n2, 1, P, n2, ipivP, t1, n2);
-			Mult(n2, n2, -1., Q, n2, t1, 0., &t1[n2]);
-			Mult(n4, n2,  1., Sba, n4, &t1[n2], 1., bjp1);
-		}
-	}
-//printf("Forward pass completed\n"); fflush(stdout);
-//PrintMatrix("RHS1", n4,nlayers, ab, n4);
-
-	// Diagonal pass
-	for(size_t j = 2; j < nlayers; ++j){
-		// Set pointers to current row of matrices
-		const doublecomplex *row = work+6*n22*j;
-		const doublecomplex *P = row + 4*n22;
-		const doublecomplex *Q = P + n22;
-		size_t *ipivP = iwork + n2*j;
-		doublecomplex *aj = &ab[j*n4];
-		doublecomplex *bjm1 = aj-n2;
-		// Diaonal block:
-		//   [ P     0 ]
-		//   [ Q     I ]
-		// Inverse:
-		//   [    inv(P)   0 ] [ bjm1 ]
-		//   [ -Q inv(P)   I ] [ aj   ]
-		LUSolve(n2, 1, P, n2, ipivP, bjm1, n2);
-//PrintMatrix("bjm1", n2,1, bjm1, n2);
-		Mult(n2, n2, -1., Q, n2, bjm1, 1., aj);
-//PrintMatrix("Q", n2,n2, Q, n2);
-	}
-//printf("Diagonal pass completed\n"); fflush(stdout);
-//PrintMatrix("RHS2", n4,nlayers, ab, n4);
-
-	// Backward pass for U \ ...
-	for(size_t j = nlayers-2; j > 0; --j){
-		// Set pointers to current row of matrices
-		doublecomplex *row = work+6*n22*j;
-		doublecomplex *P = row + 4*n22;
-		doublecomplex *Q = P + n22;
-		doublecomplex *Pprev = P - 6*n22;
-		doublecomplex *Qprev = Pprev + n22;
-
-		doublecomplex *Sbb = row+n2*n4;
-		doublecomplex *Sab = Sbb+n2;
-
-		doublecomplex *Sba = row+6*n22;
-		doublecomplex *Saa = Sba+n2;
-
-		doublecomplex *aj = &ab[j*n4];
-		doublecomplex *bjm1 = aj-n2;
-		doublecomplex *bjp1 = aj+n2;
-		size_t *ipivP = iwork + n2*j;
-
-		// super-diagonal block:
-		//   [ P   0 | -inv(P) Sbb            0 ]
-		//   [ Q   I | Q inv(P) Sbb - Sab     0 ]
-		//   [ ------+------------------------- ]
-		//   [       |                          ]
-		Mult(n2, n2, 1., Sbb, n4, bjp1, 0., t1);
-		if(j > 0){
-			LUSolve(n2, 1, P, n2, ipivP, t1, n2);
-		}
-		Axpy(n2, 1., t1, 1, bjm1, 1);
-		if(j > 0){
-			Mult(n2, n2, -1., Q, n2, t1, 1., aj);
-		}
-		Mult(n2, n2,  1., Sab, n4, bjp1, 1., aj);
-	}
-
-//printf("Backward pass completed\n"); fflush(stdout);
-//PrintMatrix("RHS3", n4,nlayers, ab, n4);
-
-	if(NULL == work_){
-		rcwa_free(work);
-	}
-	return 0;
 }
 
 int SolveInterior(
@@ -2116,7 +1839,8 @@ void GetFieldAtPoint(
         // replaceing epsilon_inv[0] in the Scale call by epsilon_inv[0]/omega
         // and z_one by 1/omega in the MultMV call. Perhaps there is a reason
         // the author didn't do it this way
-		if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+		int et = epstype & EPSILON2_TYPE_MASK;
+		if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
 			RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
 			RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
 		}else{
@@ -2212,7 +1936,7 @@ void GetFieldAtPointImproved(
 	if(NULL == work){
 		eh = (std::complex<double>*)rcwa_malloc(sizeof(std::complex<double>) * 8*n2);
 	}
-	
+
     // The function below puts ex, ey, hx, hy inside eh (i.e the fourier
     // coefficients of the transverse field components). I need to get at the
     // fourier coefficients of d_normal and e_tangential, then use the code
@@ -2229,7 +1953,7 @@ void GetFieldAtPointImproved(
     // START HERE
     // 1) I need to get access to Epsilon2, and use it to extract the fourier
     //    coefficients of dx, dy by multiplying it with [-ey ex]. In other words
-    //    [-dy dx] = Epsilon2 [-ey ex]. 
+    //    [-dy dx] = Epsilon2 [-ey ex].
     // 2) I then use P to project onto normal basis, and I - P to project onto
     //    tangential basis.
 	const std::complex<double> *hx  = &eh[3*n2+0];
@@ -2258,7 +1982,7 @@ void GetFieldAtPointImproved(
     const std::complex<double> *ndny = &dn_and_et[0];
     const std::complex<double> *dnx = &dn_and_et[n];
     const std::complex<double> *nety = &dn_and_et[n2];
-    const std::complex<double> *etx = &dn_and_et[n2+n]; 
+    const std::complex<double> *etx = &dn_and_et[n2+n];
     if(NULL != W){
         // We now have all we need to get the Fourier coefficients of the
         // normal component of d and the tangential components of e. I
@@ -2403,7 +2127,7 @@ void GetFieldOnGridImproved(
 	const std::complex<double> z_zero(0.);
 	const std::complex<double> z_one(1.);
 	const size_t n2 = 2*n;
-    // Total # of real space sampling points
+	// Total # of real space sampling points
 	const size_t N = nxy[0]*nxy[1];
     // Center of grid in real space
 	const int nxyoff[2] = { (int)(nxy[0]/2), (int)(nxy[1]/2) };
@@ -2452,7 +2176,9 @@ void GetFieldOnGridImproved(
     // replaceing epsilon_inv[0] in the Scale call by epsilon_inv[0]/omega
     // and z_one by 1/omega in the MultMV call. Perhaps there is a reason
     // the author didn't do it this way
-    if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+    int et = epstype & EPSILON2_TYPE_MASK;
+	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
+//    if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
         RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
         RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
     }else{
@@ -2608,7 +2334,7 @@ void GetFieldOnGrid(
 	const size_t n2 = 2*n;
     // Total # of real space sampling points
 	const size_t N = nxy[0]*nxy[1];
-    // Center of grid
+	// Center of grid in real space
 	const int nxyoff[2] = { (int)(nxy[0]/2), (int)(nxy[1]/2) };
 	int inxy[2] = { (int)nxy[0], (int)nxy[1] };
 	int inxy_rev[2] = { (int)nxy[1], (int)nxy[0] };
@@ -2628,17 +2354,20 @@ void GetFieldOnGrid(
 		from[i] = fft_alloc_complex(N);
 		to[i] = fft_alloc_complex(N);
 		memset(from[i], 0, sizeof(std::complex<double>) * N);
+		plan[i] = fft_plan_dft_2d(inxy_rev, from[i], to[i], 1);
+	}
+
         // This is just a function that allocates a struct that "plans" or
         // configures the Fourier transform. Mainly astruct containing the
         // pointers to memory space containing real space data (from) and
         // pointer to the memory space for the results (to)
-		plan[i] = fft_plan_dft_2d(inxy_rev, from[i], to[i], 1);
-	}
-
+    // This is setting up the left side of equation 11 of the paper and
+    // storing in the first N elements of the eh array
 	for(size_t i = 0; i < n; ++i){
 		eh[i] = (ky[i]*hx[i] - kx[i]*hy[i]);
 	}
-	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+	int et = epstype & EPSILON2_TYPE_MASK;
+	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
 		RNP::TBLAS::Scale(n, epsilon_inv[0], eh,1);
 		RNP::TBLAS::Copy(n, eh,1, &eh[n], 1);
 	}else{
@@ -2729,7 +2458,8 @@ void GetZStressTensorIntegral(
 		hz[i] = (kx[i] * -ney[i] - ky[i] * ex[i]) / omega;
 		dz[i] = (ky[i]*hx[i] - kx[i]*hy[i]) / omega;
 	}
-	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+	int et = epstype & EPSILON2_TYPE_MASK;
+	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
 		RNP::TBLAS::Copy(n, dz,1, ez, 1);
 		RNP::TBLAS::Scale(n, epsilon_inv[0], ez,1);
 	}else{
@@ -2830,7 +2560,8 @@ void GetLayerVolumeIntegral(
 			Q[i+n2+(i+n2)*n4] *= omega2_2;
 		}
 	}else if('e' == which){
-		if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+		int et = epstype & EPSILON2_TYPE_MASK;
+		if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
 			RNP::TBLAS::SetMatrix<'A'>(n,n, 0.,std::norm(epsilon_inv[0]), &Q[n2+n2*n4],n4);
 		}else{
 			RNP::TBLAS::MultMM<'C','N'>(n,n,n, z_one,epsilon_inv,n, epsilon_inv,n, z_zero,&Q[n2+n2*n4],n4);
@@ -2971,7 +2702,8 @@ void GetLayerZIntegral(
 		f[0*n4+1*n+i] = std::complex<double>(cos(theta),-sin(theta)); // note the minus
 	}
 	RNP::TBLAS::Copy(n, &f[n],1, &f[1*n4+0*n],1); // -ey
-	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == epstype || EPSILON2_TYPE_BLKDIAG2_SCALAR == epstype){
+	int et = epstype & EPSILON2_TYPE_MASK;
+	if(EPSILON2_TYPE_BLKDIAG1_SCALAR == et || EPSILON2_TYPE_BLKDIAG2_SCALAR == et){
 		RNP::TBLAS::Copy(n, &f[n4],1, &f[2*n4+n2],1); // ez
 		RNP::TBLAS::Scale(n, iomega*epsilon_inv[0], &f[2*n4+n2],1);
 	}else{
