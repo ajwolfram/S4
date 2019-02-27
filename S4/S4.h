@@ -241,11 +241,13 @@ int S4_Simulation_ExcitationDipole(S4_Simulation *S, const S4_real k[2], const c
 #ifdef __cplusplus
 // Field cache manipulation
 void Simulation_InvalidateFieldCache(S4_Simulation *S);
-std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4_Layer *layer);
-std::complex<double>* Simulation_GetCachedW(const S4_Simulation *S, const S4_Layer *layer);
-void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen);
-void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
-                                const std::complex<double> *W, size_t Wlen);
+//std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4_Layer *layer);
+S4_complex* Simulation_GetCachedW(const S4_Simulation *S, const char *layer);
+//void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const S4_complex *P, size_t Plen,
+//                                const S4_complex *W, size_t Wlen);
+//void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen);
+//void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
+//                                const std::complex<double> *W, size_t Wlen);
 // Serializes the Solution struct and saves it to disk using Boost serialize
 // functionality
 int Simulation_SaveSolution(const S4_Simulation *S, const char*);

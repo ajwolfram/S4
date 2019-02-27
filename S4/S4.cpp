@@ -25,6 +25,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+//#include <stdlib.h>
+//#include <stdio.h>
+//#include <string.h>
+//#include <math.h>
 #include <float.h>
 #include <TBLAS.h>
 #ifdef HAVE_BLAS
@@ -458,10 +462,10 @@ int Simulation_GetSMatrix(S4_Simulation *S, int layer_from, int layer_to, S4_com
 
 // Field cache manipulation
 void Simulation_InvalidateFieldCache(S4_Simulation *S);
-S4_complex* Simulation_GetCachedField(S4_Simulation *S, const S4_Layer *layer);
+//S4_complex* Simulation_GetCachedField(S4_Simulation *S, const S4_Layer *layer);
 S4_complex* Simulation_GetCachedW(S4_Simulation *S, const S4_Layer *layer);
-void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const S4_complex *P, size_t Plen,
-                                const S4_complex *W, size_t Wlen);
+//void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const S4_complex *P, size_t Plen,
+//                                const S4_complex *W, size_t Wlen);
 
 void Layer_Destroy(S4_Layer *L){
 	S4_TRACE("> Layer_Destroy(L=%p)\n", L);
@@ -3371,8 +3375,8 @@ int Simulation_GetFieldPlane(S4_Simulation *S, int nxy[2], double zz, double *E,
     S4_TRACE("Layer = %s\n", L->name);
     if(S->options.use_weismann_formulation > 0) {
         S4_TRACE("Constructing P and W\n");
-        P = Simulation_GetCachedField(S, L);
-        W = Simulation_GetCachedW( S, L);
+        P = Simulation_GetCachedField(S, (const S4_Layer *)L);
+        W = Simulation_GetCachedW( S, (const S4_Layer *)L);
         // TODO: Need to build out an array of epsilon values at each each grid
         // point, and pass this array into GetFieldOnGridImproved so it can be
         // indexed into when computing real space reconstructions of E from
