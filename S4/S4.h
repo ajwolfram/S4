@@ -236,6 +236,7 @@ int S4_Simulation_ExcitationDipole(S4_Simulation *S, const double k[2], const ch
 void Simulation_InvalidateFieldCache(S4_Simulation *S);
 std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4_Layer *layer);
 std::complex<double>* Simulation_GetCachedW(const S4_Simulation *S, const S4_Layer *layer);
+void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen);
 void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
                                 const std::complex<double> *W, size_t Wlen);
 // Serializes the Solution struct and saves it to disk using Boost serialize

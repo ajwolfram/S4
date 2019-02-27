@@ -4270,6 +4270,18 @@ std::complex<double>* Simulation_GetCachedW(const S4_Simulation *S, const S4_Lay
 	S4_TRACE("< Simulation_GetCachedW returning W = %p [omega=%f]\n", W, S->omega[0]);
 	return W;
 }
+void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen){
+    S4_TRACE("> Simulation_AddFieldToCache(S=%p, layer=%p, n=%d, P=%p) [omega=%f]\n", S, layer, (int)n, P, S->omega[0]);
+    FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache)+sizeof(std::complex<double>)*Plen);
+    f->P = (std::complex<double>*)(f+1);
+    memcpy(f->P, P, sizeof(std::complex<double>)*Plen);
+    f->layer = layer;
+    f->n = n;
+    f->next = S->field_cache;
+    S->field_cache = f;
+    S4_TRACE("< Simulation_AddFieldToCache [omega=%f]\n", S->omega[0]);
+}
+
 void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
                                 const std::complex<double> *W, size_t Wlen){
 	S4_TRACE("> Simulation_AddFieldToCache(S=%p, layer=%p, n=%d, P=%p) [omega=%f]\n", S, layer, n, P, S->omega[0]);
