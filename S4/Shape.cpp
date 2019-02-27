@@ -230,7 +230,7 @@ ShapeVertices::ShapeVertices(
 	const real_type *c, const real_type &ang
 ):Shape(c, ang), n(n), incv(incv){
 	v = (real_type*)malloc(sizeof(real_type)*incv*n);
-	memcpy(v, vxy, sizeof(real_type)*incv*n);
+//	memcpy(v, vxy, sizeof(real_type)*incv*n);
 }
 ShapeVertices::~ShapeVertices(){
 	free(v);
