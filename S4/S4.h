@@ -134,10 +134,10 @@ S4_message_handler S4_Simulation_SetMessageHandler(
 
 unsigned int S4_Lattice_Count(const S4_real *Lr, unsigned int nG);
 int S4_Lattice_Reciprocate(const S4_real *Lr, S4_real *Lk);
-// Destroys the solution belonging to a given simulation and sets
-// S->solution to NULL.
-void Simulation_DestroySolution(S4_Simulation *S);
-void Simulation_DestroyLayerSolutions(S4_Simulation *S);
+//// Destroys the solution belonging to a given simulation and sets
+//// S->solution to NULL.
+//void Simulation_DestroySolution(S4_Simulation *S);
+//void Simulation_DestroyLayerSolutions(S4_Simulation *S);
 
 
 /**********************************/
