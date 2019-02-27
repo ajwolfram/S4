@@ -300,7 +300,12 @@ struct LayerModes{
     }
 };
 
-struct LayerSolution{
+struct Solution_{
+//    std::complex<double> *ab;
+//    int *solved;
+//};
+//
+//struct LayerSolution{
     int n_G;
 	std::complex<double> *ab; // length 2*glist.n
     int *solved;
@@ -644,11 +649,11 @@ void save(Archive &ar, const Solution &soln, const unsigned int version)
     //     ar & bs::make_nvp("G",soln.G[i]);
     // }
     ar & bs::make_nvp("G", bs::make_array(soln.G, 2*soln.n_G));
-    LayerBands** Lbands = (LayerBands**)soln.layer_bands;
-    LayerSolution** Lsoln = (LayerSolution**)soln.layer_solution;
+    LayerModes** Lmodes = (LayerModes**)soln.layer_modes;
+    Solution_** Lsoln = (Solution_**)soln.layer_solution;
     for(size_t i = 0; i < soln.layer_count; i++){
-        // ar & bs::make_nvp("Lbands",Lbands[i]);
-        ar & bs::make_nvp("Lbands",*Lbands[i]);
+        // ar & bs::make_nvp("Lmodes",Lmodes[i]);
+        ar & bs::make_nvp("Lmodes",*Lmodes[i]);
     }
     for(size_t i = 0; i < soln.layer_count; i++){
         // ar & bs::make_nvp("Lsoln",Lsoln[i]);
@@ -681,38 +686,38 @@ void load(Archive &ar, Solution &soln, const unsigned int version)
     //     soln.G = NULL;
     // }
     soln.G = (int*)S4_malloc(sizeof(int*)*2*soln.n_G);
-    // layer_bands and layer_solution are stored in the same
+    // layer_modes and layer_solution are stored in the same
     // contiguous memory space
-    // if(soln.layer_bands != NULL){
+    // if(soln.layer_modes != NULL){
     //     S4_TRACE("FREEING LAYER_BANDS\n");
-    //     free(soln.layer_bands);
-    //     soln.layer_bands = NULL;
+    //     free(soln.layer_modes);
+    //     soln.layer_modes = NULL;
     // }
-    soln.layer_bands = (void**)S4_malloc(sizeof(void*)*2*soln.layer_count);
-    soln.layer_solution = soln.layer_bands + soln.layer_count;
+    soln.layer_modes = (void**)S4_malloc(sizeof(void*)*2*soln.layer_count);
+    soln.layer_solution = soln.layer_modes + soln.layer_count;
     // for(int i = 0; i < 2*soln.layer_count; ++i){
-    //     soln.layer_bands[i] = NULL;
-    //     // soln.layer_bands[i] = (LayerBands*)S4_malloc(sizeof(LayerBands));
+    //     soln.layer_modes[i] = NULL;
+    //     // soln.layer_modes[i] = (LayerModes*)S4_malloc(sizeof(LayerModes));
     // }
     S4_TRACE("Allocating band memory and layer solution memory\n");
-    // LayerBands** start = soln.layer_bands;
+    // LayerModes** start = soln.layer_modes;
     for(int i = 0; i < soln.layer_count; ++i){
         // S4_TRACE("layer index = %d\n", i);
-        // LayerBands* pB = (LayerBands*)soln.layer_bands[i];
-        // pB = (LayerBands*)S4_malloc(sizeof(LayerBands));
-        // soln.layer_bands[i] = NULL;
-        soln.layer_bands[i] = (LayerBands*)S4_malloc(sizeof(LayerBands));
-        soln.layer_solution[i] = (LayerSolution*)S4_malloc(sizeof(LayerSolution));
-        // *soln.layer_bands = (LayerBands*)S4_malloc(sizeof(LayerBands));
-        // soln.layer_bands++;
+        // LayerModes* pB = (LayerModes*)soln.layer_modes[i];
+        // pB = (LayerModes*)S4_malloc(sizeof(LayerModes));
+        // soln.layer_modes[i] = NULL;
+        soln.layer_modes[i] = (LayerModes*)S4_malloc(sizeof(LayerModes));
+        soln.layer_solution[i] = (Solution_*)S4_malloc(sizeof(Solution_));
+        // *soln.layer_modes = (LayerModes*)S4_malloc(sizeof(LayerModes));
+        // soln.layer_modes++;
     }
-    // soln.layer_bands = start;
+    // soln.layer_modes = start;
     S4_TRACE("Allocated band memory and layer solution memory\n");
     // S4_TRACE("Allocating layer solution memory\n");
-	// // LayerSolution** Lsoln = (LayerSolution**)soln.layer_solution;
+	// // Solution_** Lsoln = (Solution_**)soln.layer_solution;
     // for(int i = 0; i < soln.layer_count; ++i){
     //     // soln.layer_solution[i] = NULL;
-    //     soln.layer_solution[i] = (LayerSolution*)S4_malloc(sizeof(LayerSolution));
+    //     soln.layer_solution[i] = (Solution_*)S4_malloc(sizeof(Solution_));
     // }
     // S4_TRACE("Allocated layer solution memory\n");
     // kx and ky are stored in the same continous memory space
@@ -730,12 +735,12 @@ void load(Archive &ar, Solution &soln, const unsigned int version)
     // }
     ar & bs::make_nvp("G", bs::make_array(soln.G, 2*soln.n_G));
     S4_TRACE("Loaded G\n");
-    LayerBands** Lbands = (LayerBands**)soln.layer_bands;
-    LayerSolution** Lsoln = (LayerSolution**)soln.layer_solution;
+    LayerModes** Lmodes = (LayerModes**)soln.layer_modes;
+    Solution_** Lsoln = (Solution_**)soln.layer_solution;
     for(size_t i = 0; i < soln.layer_count; i++){
-        ar & bs::make_nvp("Lbands",*Lbands[i]);
+        ar & bs::make_nvp("Lmodes",*Lmodes[i]);
     }
-    S4_TRACE("Loaded bands\n");
+    S4_TRACE("Loaded modes\n");
     // We can index from zero
     S4_TRACE("Beginning solution load\n");
     for(size_t i = 0; i < soln.layer_count; i++){
@@ -758,10 +763,10 @@ void load(Archive &ar, Solution &soln, const unsigned int version)
 int Simulation_SaveSolution(const S4_Simulation*S, const char *fname){
 	S4_TRACE("> Simulation_SaveSolution(S=%p, layer_bands=%p (%p), layer_solution=%p (%p)) [omega=%f]\n",
 		S,
-		S->solution->layer_bands, (NULL != S->solution->layer_bands ? *S->solution->layer_bands : NULL),
+		S->solution->layer_modes, (NULL != S->solution->layer_modes ? *S->solution->layer_modes : NULL),
         S->solution->layer_solution, (NULL != S->solution->layer_solution ? *S->solution->layer_solution : NULL),
         S->omega[0]);
-    // We need to quickly set n_G on the solution, all the bands and //
+    // We need to quickly set n_G on the solution, all the modes and //
     // all the layer solutions because the serialization code needs i  t
     // S4_TRACE("Filename: ");
     // while (*fname != '\0') {
@@ -770,15 +775,15 @@ int Simulation_SaveSolution(const S4_Simulation*S, const char *fname){
     // S4_TRACE("\n");
     Solution *soln = S->solution;
     FieldCache *fcache = S->field_cache;
-    LayerBands** Lbands = (LayerBands**)soln->layer_bands;
-    LayerSolution** Lsoln = (LayerSolution**)soln->layer_solution;
+    LayerModes** Lmodes = (Layermodes**)soln->layer_modes;
+    Solution_** Lsoln = (Solution_**)soln->layer_solution;
     soln->n_G = S->n_G;
     S4_TRACE("S4_Simulationn_G: %d\n", S->n_G);
     S4_TRACE("Solution nG: %d\n", soln->n_G);
     S4_TRACE("Solution layer_count: %d\n", soln->layer_count);
 
     for(int i = 0; i < soln->layer_count; i++){
-        Lbands[i]->n_G = soln->n_G;
+        Lmodes[i]->n_G = soln->n_G;
         Lsoln[i]->n_G = soln->n_G;
     }
     // make an archive
@@ -831,9 +836,9 @@ int Simulation_SaveSolution(const S4_Simulation*S, const char *fname){
         return 2;
     }
     ofs.close();
-	S4_TRACE("< Simulation_SaveSolution(S=%p, layer_bands=%p (%p), layer_solution=%p (%p)) [omega=%f]\n",
+	S4_TRACE("< Simulation_SaveSolution(S=%p, layer_modes=%p (%p), layer_solution=%p (%p)) [omega=%f]\n",
 		S,
-		S->solution->layer_bands, (NULL != S->solution->layer_bands ? *S->solution->layer_bands : NULL),
+		S->solution->layer_modes, (NULL != S->solution->layer_modes ? *S->solution->layer_modes : NULL),
         S->solution->layer_solution, (NULL != S->solution->layer_solution ? *S->solution->layer_solution : NULL),
         S->omega[0]);
     return 0;
@@ -936,10 +941,10 @@ int Simulation_LoadSolution(S4_Simulation*S, const char *fname){
     }
     // S4_TRACE("newsoln = %p\n", &newsoln);
     // S->solution = newsoln;
-    // LayerBands** Lbands = (LayerBands**)newsoln->layer_bands;
-    // Lbands[0]->epstype=10;
+    // LayerModes** Lmodes = (LayerModes**)newsoln->layer_modes;
+    // Lmodes[0]->epstype=10;
     // memcpy(S->solution, newsoln, sizeof(newsoln));
-    // memcpy(S->solution->layer_bands, newsoln->layer_bands, sizeof(void*)*2*newsoln->layer_count);
+    // memcpy(S->solution->layer_modes, newsoln->layer_modes, sizeof(void*)*2*newsoln->layer_count);
     ifs.close();
 	S4_TRACE("< Simulation_LoadSolution [omega=%f]\n", S->omega[0]);
     S4_TRACE("Solution after LoadSolution: %p\n", S->solution);
@@ -2985,9 +2990,9 @@ void Simulation_DestroySolution(S4_Simulation *S) {
             void **Lsoln = sol->layer_solution;
             S4_Layer *L = S->layer;
             while (NULL != L) {
-                // release Lbands
-                if (NULL != Lbands) {
-                    LayerBands *pB = (LayerBands * )(*Lbands);
+                // release Lmodes
+                if (NULL != Lmodes) {
+                    LayerModes *pB = (LayerModes * )(*Lmodes);
                     S4_TRACE("LayerBand pointer: %p\n", pB);
                     if (NULL != pB) {
                         // abort();
@@ -3000,7 +3005,7 @@ void Simulation_DestroySolution(S4_Simulation *S) {
                 }
                 // release Lsoln
                 if (NULL != Lsoln) {
-                    LayerSolution *pS = (LayerSolution *) (*Lsoln);
+                    Solution_ *pS = (Solution_ *) (*Lsoln);
                     S4_TRACE("LayerSolution pointer: %p\n", pS);
                     if (NULL != pS) {
                         if (NULL != pS->ab) {
@@ -3009,12 +3014,12 @@ void Simulation_DestroySolution(S4_Simulation *S) {
                         S4_free(pS);
                     }
                 }
-                ++Lbands;
+                ++Lmodes;
                 ++Lsoln;
                 L = L->next;
             }
-            S4_free(sol->layer_bands);
-            sol->layer_bands = NULL;
+            S4_free(sol->layer_modes);
+            sol->layer_modes = NULL;
             sol->layer_solution = NULL;
         }
         free(S->solution);
@@ -4235,7 +4240,7 @@ void Simulation_InvalidateFieldCache(S4_Simulation *S){
 	S->field_cache = NULL;
 	S4_TRACE("< Simulation_InvalidateFieldCache [omega=%f]\n", S->omega[0]);
 }
-std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4_Layer *layer){
+std::complex<double>* Simulation_GetCachedField(const S4_Simulation *S, const S4_LayerID *layer){
 	S4_TRACE("> Simulation_GetCachedField(S=%p, layer=%p) [omega=%f]\n", S, layer, S->omega[0]);
 	std::complex<double> *P = NULL;
 	FieldCache *f = S->field_cache;
@@ -4282,7 +4287,7 @@ void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t 
     S4_TRACE("< Simulation_AddFieldToCache [omega=%f]\n", S->omega[0]);
 }
 
-void Simulation_AddFieldToCache(S4_Simulation *S, const S4_Layer *layer, size_t n, const std::complex<double> *P, size_t Plen,
+void Simulation_AddFieldToCache(S4_Simulation *S, const S4_LayerID *layer, size_t n, const std::complex<double> *P, size_t Plen,
                                 const std::complex<double> *W, size_t Wlen){
 	S4_TRACE("> Simulation_AddFieldToCache(S=%p, layer=%p, n=%d, P=%p) [omega=%f]\n", S, layer, n, P, S->omega[0]);
 	/* FieldCache *f = (FieldCache*)S4_malloc(sizeof(FieldCache)+sizeof(std::complex<double>)*Plen+sizeof(std::complex<double>)*Wlen); */
