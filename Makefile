@@ -183,7 +183,7 @@ S4_LIBOBJS = \
 	$(OBJDIR)/S4k/S4.o \
 	$(OBJDIR)/S4k/rcwa.o \
 	$(OBJDIR)/S4k/fmm_common.o \
-	$(OBJDIR)/S4k/fmm_FFT.o \
+#	$(OBJDIR)/S4k/fmm_FFT.o \
 	$(OBJDIR)/S4k/fmm_kottke.o \
 	$(OBJDIR)/S4k/fmm_closed.o \
 	$(OBJDIR)/S4k/fmm_PolBasisNV.o \
